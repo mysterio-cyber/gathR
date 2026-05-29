@@ -907,12 +907,67 @@ body::before{
   <div class="modal">
     <button class="modal-close" onclick="closeModal('editProfileModal')">✕</button>
     <h2>Edit Profile</h2>
+
+    <!-- Avatar upload -->
+    <div style="display:flex;justify-content:center;margin-bottom:20px">
+      <div class="avatar-upload-wrap">
+        <div class="avatar xl" id="ep_avatarPreview"></div>
+        <div class="avatar-overlay">📷 Change</div>
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+               onchange="previewAvatar(this)" id="ep_avatarInput" />
+      </div>
+    </div>
+
     <div class="mfield"><label>Full name</label><input id="ep_name" /></div>
     <div class="mfield"><label>Headline</label><input id="ep_headline" placeholder="e.g. Senior Engineer at Google" /></div>
     <div class="mfield"><label>Location</label><input id="ep_location" placeholder="e.g. Hyderabad, IN" /></div>
     <div class="mfield"><label>About</label><textarea id="ep_about" placeholder="Tell your professional story..."></textarea></div>
     <div class="mfield"><label>Skills (comma separated)</label><input id="ep_skills" placeholder="Python, React, Machine Learning..." /></div>
     <button class="modal-save" onclick="saveProfile()">Save changes</button>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-bg" id="inviteModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('inviteModal')">✕</button>
+    <h2>Invite to gathR</h2>
+    <p style="color:var(--muted);font-size:.83rem;margin-bottom:18px">
+      Invite your contacts to join your professional network on gathR.
+    </p>
+    <div class="invite-methods">
+      <button class="invite-method-btn" onclick="inviteViaWhatsApp()">
+        <span class="im-icon">💬</span>
+        <div class="im-info">
+          <div class="im-title">WhatsApp</div>
+          <div class="im-sub">Send invite via WhatsApp message</div>
+        </div>
+        <span style="color:var(--muted);font-size:.8rem">→</span>
+      </button>
+      <button class="invite-method-btn" onclick="inviteViaSMS()">
+        <span class="im-icon">📱</span>
+        <div class="im-info">
+          <div class="im-title">SMS / Text Message</div>
+          <div class="im-sub">Open your default messaging app</div>
+        </div>
+        <span style="color:var(--muted);font-size:.8rem">→</span>
+      </button>
+      <button class="invite-method-btn" onclick="inviteViaEmail()">
+        <span class="im-icon">📧</span>
+        <div class="im-info">
+          <div class="im-title">Email</div>
+          <div class="im-sub">Send a professional invitation by email</div>
+        </div>
+        <span style="color:var(--muted);font-size:.8rem">→</span>
+      </button>
+    </div>
+    <div style="margin-top:16px">
+      <div style="font-size:.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Or share your invite link</div>
+      <div class="invite-link-box">
+        <input type="text" id="inviteLinkInput" readonly />
+        <button onclick="copyInviteLink()">Copy</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -981,7 +1036,12 @@ function refreshUserUI() {
   if(!ME)return;
   const ini=ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.textContent=ini;
+    const el=document.getElementById(id); if(!el)return;
+    if(ME.avatar){
+      el.innerHTML=`<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    } else {
+      el.textContent=ini;
+    }
   });
   setText('navName',ME.name.split(' ')[0]);
   setText('sideName',ME.name);
@@ -1168,15 +1228,46 @@ async function loadProfilePosts(){
   if(!posts.length){c.innerHTML='<div class="empty-state"><span class="icon">✦</span><h3>No posts yet</h3><p>Share your first update!</p></div>';return}
   c.innerHTML=posts.map(renderPost).join('');
 }
+// ── AVATAR ──
+let avatarBase64 = null;
+
+function previewAvatar(input){
+  if(!input.files[0])return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    avatarBase64=e.target.result;
+    const prev=document.getElementById('ep_avatarPreview');
+    prev.innerHTML=`<img src="${avatarBase64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    // update all avatars live
+    updateAllAvatars(avatarBase64);
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function updateAllAvatars(src){
+  ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=`<img src="${src}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  });
+}
+
 function openEditProfile(){
   if(!ME)return;
+  avatarBase64=ME.avatar||null;
   document.getElementById('ep_name').value=ME.name||'';
   document.getElementById('ep_headline').value=ME.headline||'';
   document.getElementById('ep_location').value=ME.location||'';
   document.getElementById('ep_about').value=ME.about||'';
   document.getElementById('ep_skills').value=JSON.parse(ME.skills||'[]').join(', ');
+  // set avatar preview
+  const prev=document.getElementById('ep_avatarPreview');
+  const ini=ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  prev.innerHTML=ME.avatar
+    ? `<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+    : ini;
   openModal('editProfileModal');
 }
+
 async function saveProfile(){
   const skills=document.getElementById('ep_skills').value.split(',').map(s=>s.trim()).filter(Boolean);
   const data={
@@ -1185,12 +1276,51 @@ async function saveProfile(){
     location:document.getElementById('ep_location').value.trim(),
     about:document.getElementById('ep_about').value.trim(),
     skills:JSON.stringify(skills),
+    avatar:avatarBase64||ME.avatar||'',
   };
   const r=await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   const d=await r.json();
   if(d.error){showNotif('Error saving',true);return}
-  ME={...ME,...data}; refreshUserUI();
-  closeModal('editProfileModal'); showNotif('Profile updated! ✓');
+  ME={...ME,...data};
+  if(ME.avatar) updateAllAvatars(ME.avatar);
+  refreshUserUI();
+  closeModal('editProfileModal');
+  showNotif('Profile updated! ✓');
+}
+
+// ── INVITE ──
+function openInviteModal(){
+  const link=window.location.origin+'?ref='+(ME.id||'');
+  document.getElementById('inviteLinkInput').value=link;
+  openModal('inviteModal');
+}
+
+function getInviteText(){
+  return `Hey! I'm using gathR, a professional network. Join me here: ${window.location.origin}?ref=${ME.id||''}`;
+}
+
+function inviteViaWhatsApp(){
+  const text=encodeURIComponent(getInviteText());
+  window.open('https://wa.me/?text='+text,'_blank');
+}
+
+function inviteViaSMS(){
+  const text=encodeURIComponent(getInviteText());
+  // works on mobile — opens default SMS app
+  window.open('sms:?body='+text,'_blank');
+}
+
+function inviteViaEmail(){
+  const subject=encodeURIComponent('Join me on gathR — Professional Network');
+  const body=encodeURIComponent(getInviteText());
+  window.open('mailto:?subject='+subject+'&body='+body,'_blank');
+}
+
+function copyInviteLink(){
+  const input=document.getElementById('inviteLinkInput');
+  navigator.clipboard.writeText(input.value)
+    .then(()=>showNotif('Invite link copied! ✓'))
+    .catch(()=>{input.select();document.execCommand('copy');showNotif('Link copied! ✓')});
 }
 
 // ── RESUME ──
@@ -1289,7 +1419,7 @@ async function loadSuggestions(){
     others.map(u=>`<div class="suggest-item">
       <div class="avatar" style="width:30px;height:30px;font-size:.68rem">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
       <div class="suggest-info"><div class="suggest-name">${u.name}</div><div class="suggest-role">${u.headline||'gathR member'}</div></div>
-      <button class="s-connect-btn" onclick="connect(${u.id},this)">Connect</button>
+      <button class="s-connect-btn" onclick="openInviteModal()">+ Invite</button>
     </div>`).join(''):
     '<div style="padding:16px;color:var(--muted);font-size:.82rem;font-weight:600">No suggestions yet</div>';
 }
@@ -1303,7 +1433,7 @@ async function loadNetwork(){
       <div class="avatar">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
       <div class="people-name">${u.name}</div>
       <div class="people-role">${u.headline||'gathR member'}</div>
-      <button class="connect-btn" onclick="connect(${u.id},this)">Connect</button>
+      <button class="connect-btn" onclick="openInviteModal()">+ Invite</button>
     </div>`).join('')}</div>`:
     '<div class="empty-state"><span class="icon">⊕</span><h3>No members yet</h3><p>Invite your colleagues!</p></div>';
 }
@@ -1397,8 +1527,8 @@ def me():
 def update_profile():
     d = request.json
     db = get_db()
-    db.execute("UPDATE users SET name=?,headline=?,location=?,about=?,skills=? WHERE id=?",
-               (d.get("name"), d.get("headline"), d.get("location"), d.get("about"), d.get("skills"), session["user_id"]))
+    db.execute("UPDATE users SET name=?,headline=?,location=?,about=?,skills=?,avatar=? WHERE id=?",
+           (d.get("name"), d.get("headline"), d.get("location"), d.get("about"), d.get("skills"), d.get("avatar",""), session["user_id"]))
     db.commit()
     user = row_to_dict(db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone())
     return jsonify(user)
