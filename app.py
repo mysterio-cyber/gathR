@@ -18,7 +18,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("sk-svcacct-P5j20SuuL0oVZjrcy30qUWfo9N6iAXЗеMuLqAB0LvkYQH6GHLqEMcuj7KTwIN6hZ2EtWRWpBHDTЗBLbkFJd0QaRrbiwSTiWTZsSGVa0JG0f50I3P36v45Y6fgyybBpBLz01ercJXLk_8GmzLN4Gx6ARToD0A"")
+ANTHROPIC_API_KEY = os.getenv("sk-svcacct-P5j20SuuL0oVZjrcy30qUWfo9N6iAXЗеMuLqAB0LvkYQH6GHLqEMcuj7KTwIN6hZ2EtWRWpBHDTЗBLbkFJd0QaRrbiwSTiWTZsSGVa0JG0f50I3P36v45Y6fgyybBpBLz01ercJXLk_8GmzLN4Gx6ARToD0A")
 client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
