@@ -1438,6 +1438,35 @@ def create_post():
     db.commit()
     return jsonify({"ok": True})
 
+@app.route("/api/posts/<int:post_id>", methods=["PUT"])
+@login_required
+def edit_post(post_id):
+    db = get_db()
+    post = db.execute("SELECT * FROM posts WHERE id=?", (post_id,)).fetchone()
+    if not post:
+        return jsonify({"error": "Not found"}), 404
+    if post["user_id"] != session["user_id"]:
+        return jsonify({"error": "Unauthorized"}), 403
+    content = (request.json.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "Content cannot be empty"}), 400
+    db.execute("UPDATE posts SET content=? WHERE id=?", (content, post_id))
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/posts/<int:post_id>", methods=["DELETE"])
+@login_required
+def delete_post(post_id):
+    db = get_db()
+    post = db.execute("SELECT * FROM posts WHERE id=?", (post_id,)).fetchone()
+    if not post:
+        return jsonify({"error": "Not found"}), 404
+    if post["user_id"] != session["user_id"]:
+        return jsonify({"error": "Unauthorized"}), 403
+    db.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
 @app.route("/api/posts/<int:post_id>/like", methods=["POST"])
 @login_required
 def like_post(post_id):
@@ -1451,7 +1480,6 @@ def like_post(post_id):
     db.execute("UPDATE posts SET likes=? WHERE id=?", (json.dumps(likes), post_id))
     db.commit()
     return jsonify({"ok": True})
-
 # ── USERS ──
 @app.route("/api/users")
 @login_required
@@ -1526,10 +1554,10 @@ Only jobs with match_pct >= 20, sorted descending."""
 
     try:
         msg = ai_client.messages.create(
-    model="claude-sonnet-4-5",
-    max_tokens=2500,
-    messages=[{"role": "user", "content": prompt}]
-)
+            model="claude-sonnet-4-5",
+            max_tokens=2500,
+            messages=[{"role": "user", "content": prompt}]
+        )
         raw = msg.content[0].text.strip()
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
         ai_data = json.loads(raw)
