@@ -32,6 +32,8 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DATABASE = "gathr.db"
 
+if not ANTHROPIC_API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
 ai_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 # ══════════════════════════════════════════════
@@ -1456,10 +1458,10 @@ Only jobs with match_pct >= 20, sorted descending."""
 
     try:
         msg = ai_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2500,
-            messages=[{"role": "user", "content": prompt}]
-        )
+    model="claude-sonnet-4-5",
+    max_tokens=2500,
+    messages=[{"role": "user", "content": prompt}]
+)
         raw = msg.content[0].text.strip()
         raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
         ai_data = json.loads(raw)
