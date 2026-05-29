@@ -117,10 +117,16 @@ def sanitize(text):
 def extract_pdf(file_bytes):
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-        return sanitize("\n".join(p.extract_text() or "" for p in reader.pages))
-    except:
+        pages = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                # encode to ascii immediately, drop bad chars
+                text = text.encode("ascii", errors="ignore").decode("ascii")
+                pages.append(text)
+        return re.sub(r"[ \t]+", " ", "\n".join(pages)).strip()
+    except Exception as e:
         return ""
-
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in {
         "pdf", "txt", "png", "jpg", "jpeg", "gif", "doc", "docx"
@@ -1526,14 +1532,23 @@ def analyze_resume():
     if fname.endswith(".pdf"):
         resume_text = extract_pdf(fb)
     elif fname.endswith(".txt"):
-        resume_text = sanitize(fb.decode("utf-8", errors="ignore"))
+        resume_text = fb.decode("utf-8", errors="ignore")
     else:
         return jsonify({"error": "Upload PDF or TXT only"}), 400
-    if not resume_text or len(resume_text) < 50:
-        return jsonify({"error": "Could not read resume content"}), 400
 
-    jobs_str = "\n".join(f"- {j['title']} at {j['company']} | {', '.join(j['skills'])}" for j in JOBS_DB)
-    prompt = f"""Analyze this resume and return ONLY valid JSON with no markdown.
+    # ── aggressive clean: strip every non-ASCII character ──
+    resume_text = resume_text.encode("ascii", errors="ignore").decode("ascii")
+    resume_text = re.sub(r"[ \t]+", " ", resume_text)
+    resume_text = re.sub(r"\n{3,}", "\n\n", resume_text).strip()
+
+    if not resume_text or len(resume_text) < 50:
+        return jsonify({"error": "Could not read resume content. Try a text-based PDF."}), 400
+
+    jobs_str = "\n".join(
+        f"- {j['title']} at {j['company']} | {', '.join(j['skills'])}"
+        for j in JOBS_DB
+    )
+    prompt = f"""Analyze this resume and return ONLY valid JSON with no markdown, no explanation.
 
 RESUME:
 {resume_text[:3500]}
@@ -1541,7 +1556,7 @@ RESUME:
 JOBS:
 {jobs_str}
 
-Return exactly:
+Return exactly this JSON structure:
 {{
   "skills": ["skill1","skill2"],
   "profile_score": 75,
@@ -1550,7 +1565,7 @@ Return exactly:
   "ats": {{"overall":70,"keywords":65,"formatting":80,"readability":75,"overview":"2 sentences","suggestions":[{{"title":"Issue","detail":"Fix"}}]}},
   "gap": {{"overview":"2 sentences","missing_skills":["s1"],"strong_skills":["s2"],"roadmap":[{{"skill":"Learn X","reason":"Because Y"}}]}}
 }}
-Only jobs with match_pct >= 20, sorted descending."""
+Only include jobs with match_pct >= 20, sorted descending by match_pct."""
 
     try:
         msg = ai_client.messages.create(
@@ -1559,16 +1574,23 @@ Only jobs with match_pct >= 20, sorted descending."""
             messages=[{"role": "user", "content": prompt}]
         )
         raw = msg.content[0].text.strip()
-        raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
+        # strip markdown fences if model adds them
+        raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
         ai_data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"AI returned invalid JSON: {str(e)}"}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"AI error: {str(e)}"}), 500
 
     matched = []
     for m in ai_data.get("job_matches", []):
         job = next((j for j in JOBS_DB if j["title"] == m["job_title"]), None)
         if job:
-            matched.append({**job, "match_pct": m["match_pct"], "matched_skills": m.get("matched_skills", [])})
+            matched.append({
+                **job,
+                "match_pct": m["match_pct"],
+                "matched_skills": m.get("matched_skills", [])
+            })
 
     result = {
         "resume_text": resume_text[:2000],
@@ -1579,10 +1601,13 @@ Only jobs with match_pct >= 20, sorted descending."""
         "ats": ai_data.get("ats", {}),
         "gap": ai_data.get("gap", {}),
     }
+
     db = get_db()
     skills_json = json.dumps(ai_data.get("skills", []))
-    db.execute("UPDATE users SET resume_text=?,resume_analysis=?,skills=? WHERE id=?",
-               (resume_text[:3000], json.dumps(result), skills_json, session["user_id"]))
+    db.execute(
+        "UPDATE users SET resume_text=?,resume_analysis=?,skills=? WHERE id=?",
+        (resume_text[:3000], json.dumps(result), skills_json, session["user_id"])
+    )
     db.commit()
     return jsonify(result)
 
