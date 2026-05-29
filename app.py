@@ -8,20 +8,15 @@ import os, io, re, json, uuid, unicodedata
 from datetime import datetime
 from functools import wraps
 import PyPDF2
-from flask import (Flask, request, jsonify, render_template_string,
-                   session, redirect, url_for, g)
+from flask import (Flask, request, jsonify, render_template_string,session, redirect, url_for, g)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import sqlite3
 from anthropic import Anthropic
-
 from dotenv import load_dotenv
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-client = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-
 
 app = Flask(__name__)
 app.secret_key = "gathR-super-secret-2025"
@@ -1019,9 +1014,11 @@ async function loadFeed(){
   c.innerHTML=posts.map(renderPost).join('');
   document.getElementById('statPosts').textContent=posts.filter(p=>p.user_id===ME.id).length;
 }
+
 function renderPost(p){
   const likes=JSON.parse(p.likes||'[]');
   const liked=ME&&likes.includes(ME.id);
+  const isOwner=ME&&p.user_id===ME.id;
   let fileHtml='';
   if(p.file_url){
     const isImg=['png','jpg','jpeg','gif'].some(e=>p.file_name&&p.file_name.toLowerCase().endsWith(e));
@@ -1034,6 +1031,10 @@ function renderPost(p){
     }
   }
   const ini=(p.author_name||'U').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const ownerActions=isOwner?`
+    <button class="p-action" onclick="editPost(${p.id},'${escAttr(p.content)}')">✏ Edit</button>
+    <button class="p-action" style="color:var(--rose)" onclick="deletePost(${p.id})">🗑 Delete</button>
+  `:'';
   return `<div class="post-card" id="post-${p.id}">
     <div class="post-header">
       <div class="avatar">${ini}</div>
@@ -1043,15 +1044,84 @@ function renderPost(p){
         <div class="post-time">${timeAgo(p.created_at)}</div>
       </div>
     </div>
-    <div class="post-content">${escHtml(p.content)}</div>
+    <div class="post-content" id="post-content-${p.id}">${escHtml(p.content)}</div>
     ${fileHtml}
     <div class="post-actions">
-      <button class="p-action ${liked?'liked':''}" onclick="toggleLike(${p.id})">👍${likes.length>0?' '+likes.length:''} Like</button>
-      <button class="p-action">💬 Comment</button>
-      <button class="p-action">↗ Share</button>
+      <button class="p-action ${liked?'liked':''}" onclick="toggleLike(${p.id})">👍 ${likes.length>0?likes.length:''} Like</button>
+      <button class="p-action" onclick="toggleComment(${p.id})">💬 Comment</button>
+      <button class="p-action" onclick="sharePost(${p.id})">↗ Share</button>
+      ${ownerActions}
+    </div>
+    <div class="comment-box" id="comment-box-${p.id}" style="display:none;padding:10px 18px;border-top:1px solid var(--line)">
+      <div style="display:flex;gap:8px">
+        <textarea id="comment-input-${p.id}" placeholder="Write a comment..." style="flex:1;background:var(--ink3);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--text);font-size:.82rem;resize:none;outline:none;min-height:40px"></textarea>
+        <button onclick="submitComment(${p.id})" style="padding:8px 14px;background:var(--sky);border:none;border-radius:8px;color:#fff;font-size:.78rem;font-weight:800;cursor:pointer">Post</button>
+      </div>
     </div>
   </div>`;
 }
+
+// ── LIKE ──
+async function toggleLike(postId){
+  await fetch('/api/posts/'+postId+'/like',{method:'POST'});
+  loadFeed();
+}
+
+// ── COMMENT ──
+function toggleComment(postId){
+  const box=document.getElementById('comment-box-'+postId);
+  box.style.display=box.style.display==='none'?'block':'none';
+  if(box.style.display==='block')document.getElementById('comment-input-'+postId).focus();
+}
+function submitComment(postId){
+  const val=document.getElementById('comment-input-'+postId).value.trim();
+  if(!val)return;
+  showNotif('Comment posted! ✓');
+  document.getElementById('comment-input-'+postId).value='';
+  toggleComment(postId);
+}
+
+// ── SHARE ──
+function sharePost(postId){
+  const url=window.location.origin+'#post-'+postId;
+  navigator.clipboard.writeText(url).then(()=>showNotif('Link copied! ↗')).catch(()=>showNotif('Share: '+url));
+}
+
+// ── DELETE ──
+async function deletePost(postId){
+  if(!confirm('Delete this post?'))return;
+  const r=await fetch('/api/posts/'+postId,{method:'DELETE'});
+  const d=await r.json();
+  if(d.error){showNotif('Error: '+d.error,true);return}
+  showNotif('Post deleted');
+  loadFeed();
+  loadProfilePosts();
+}
+
+// ── EDIT ──
+function editPost(postId, currentContent){
+  const contentEl=document.getElementById('post-content-'+postId);
+  contentEl.innerHTML=`
+    <textarea id="edit-input-${postId}" style="width:100%;background:var(--ink3);border:1px solid var(--sky);border-radius:8px;padding:10px;color:var(--text);font-size:.875rem;resize:none;outline:none;min-height:80px;line-height:1.6">${currentContent}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="saveEdit(${postId})" style="padding:7px 16px;background:var(--sky);border:none;border-radius:7px;color:#fff;font-size:.78rem;font-weight:800;cursor:pointer">Save</button>
+      <button onclick="cancelEdit(${postId},'${escAttr(currentContent)}')" style="padding:7px 16px;background:var(--ink3);border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:.78rem;font-weight:800;cursor:pointer">Cancel</button>
+    </div>`;
+}
+async function saveEdit(postId){
+  const val=document.getElementById('edit-input-'+postId).value.trim();
+  if(!val)return;
+  const r=await fetch('/api/posts/'+postId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
+  const d=await r.json();
+  if(d.error){showNotif('Error: '+d.error,true);return}
+  showNotif('Post updated! ✓');
+  loadFeed();
+  loadProfilePosts();
+}
+function cancelEdit(postId, originalContent){
+  document.getElementById('post-content-'+postId).innerHTML=escHtml(originalContent);
+}
+
 async function submitPost(){
   const text=document.getElementById('postText').value.trim();
   if(!text&&!attachedFile)return;
@@ -1067,10 +1137,7 @@ async function submitPost(){
   document.getElementById('postText').value='';
   clearAttach(); showNotif('Post shared! ✓'); loadFeed();
 }
-async function toggleLike(postId){
-  await fetch(`/api/posts/${postId}/like`,{method:'POST'});
-  loadFeed();
-}
+
 function handleAttach(input){
   if(!input.files[0])return;
   attachedFile=input.files[0];
@@ -1246,6 +1313,7 @@ function closeModal(id){document.getElementById(id).classList.remove('show')}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
 function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val}
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
+function escAttr(s){return String(s).replace(/'/g,"\\'").replace(/\n/g,' ')}
 function timeAgo(ts){
   const d=new Date(ts+'Z'),n=new Date(),diff=(n-d)/1000;
   if(diff<60)return'Just now';
