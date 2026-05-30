@@ -1,4 +1,3 @@
-
 """
 gathR - Corporate Professional Network
 Full-stack Flask app with SQLite auth, AI resume analysis, profile/post feed
@@ -115,18 +114,39 @@ def sanitize(text):
     return re.sub(r"[ \t]+", " ", cleaned).strip()
 
 def extract_pdf(file_bytes):
+    """Extract text from PDF, preserving unicode but sanitizing for safe use."""
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
         pages = []
         for page in reader.pages:
             text = page.extract_text()
             if text:
-                # encode to ascii immediately, drop bad chars
-                text = text.encode("ascii", errors="ignore").decode("ascii")
                 pages.append(text)
-        return re.sub(r"[ \t]+", " ", "\n".join(pages)).strip()
+        raw = "\n".join(pages)
+
+        # Normalize common unicode punctuation to ASCII equivalents
+        raw = unicodedata.normalize("NFKD", raw)
+        replacements = [
+            ("\u2013", "-"), ("\u2014", "-"), ("\u2018", "'"), ("\u2019", "'"),
+            ("\u201c", '"'), ("\u201d", '"'), ("\u2022", "*"), ("\u00a0", " "),
+            ("\u2026", "..."), ("\u200b", ""), ("\ufeff", ""), ("\u00b7", "*"),
+            ("\u25cf", "*"), ("\u2192", "->"), ("\u2019", "'"), ("\u00e9", "e"),
+            ("\u00e0", "a"), ("\u00e8", "e"), ("\u00fc", "u"), ("\u00f6", "o"),
+        ]
+        for bad, good in replacements:
+            raw = raw.replace(bad, good)
+
+        # Keep printable ASCII + newlines/tabs; replace anything else with space
+        cleaned = "".join(
+            c if (32 <= ord(c) < 127 or c in "\n\r\t") else " "
+            for c in raw
+        )
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned
     except Exception as e:
         return ""
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in {
         "pdf", "txt", "png", "jpg", "jpeg", "gif", "doc", "docx"
@@ -135,6 +155,7 @@ def allowed_file(filename):
 def row_to_dict(row):
     if row is None: return None
     return dict(row)
+
 
 # ══════════════════════════════════════════════
 #  FRONTEND HTML  — redesigned
@@ -176,19 +197,16 @@ a{color:inherit;text-decoration:none}
 button,input,textarea,select{font-family:inherit}
 button{cursor:pointer}
 
-/* scrollbar */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
 
-/* ─── NOISE OVERLAY ─── */
 body::before{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
   opacity:.6;
 }
 
-/* ─── AUTH ─── */
 .auth-page{
   min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
   background:radial-gradient(ellipse 80% 60% at 20% 10%, rgba(26,108,255,.12) 0%, transparent 70%),
@@ -269,11 +287,9 @@ body::before{
 }
 .auth-err.show{display:block}
 
-/* ─── APP SHELL ─── */
 .app{display:none;min-height:100vh}
 .app.show{display:block}
 
-/* ─── TOPBAR ─── */
 .topbar{
   position:sticky;top:0;z-index:100;
   background:rgba(10,12,15,.88);
@@ -334,7 +350,6 @@ body::before{
 }
 .logout-btn:hover{background:rgba(244,63,94,.08);color:var(--rose)}
 
-/* ─── LAYOUT ─── */
 .main-layout{
   display:grid;
   grid-template-columns:240px 1fr 270px;
@@ -347,7 +362,6 @@ body::before{
   .sidebar-left,.sidebar-right{display:none}
 }
 
-/* ─── SIDEBAR ─── */
 .sidebar-left,.sidebar-right{display:flex;flex-direction:column;gap:12px}
 
 .s-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
@@ -390,10 +404,8 @@ body::before{
   text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;
 }
 
-/* ─── FEED ─── */
 .feed{display:flex;flex-direction:column;gap:14px}
 
-/* ─── COMPOSER ─── */
 .composer{
   background:var(--card);border:1px solid var(--line);
   border-radius:var(--r2);padding:18px;
@@ -441,7 +453,6 @@ body::before{
 .attach-preview .rm{cursor:pointer;color:var(--muted);font-size:1rem;transition:color .2s}
 .attach-preview .rm:hover{color:var(--rose)}
 
-/* ─── POST CARD ─── */
 .post-card{
   background:var(--card);border:1px solid var(--line);
   border-radius:var(--r2);overflow:hidden;
@@ -490,7 +501,6 @@ body::before{
 .p-action:hover{background:var(--ink3);color:var(--text)}
 .p-action.liked{color:var(--sky);background:rgba(26,108,255,.08)}
 
-/* ─── PROFILE PAGE ─── */
 .profile-box{
   background:var(--card);border:1px solid var(--line);
   border-radius:var(--r2);overflow:hidden;margin-bottom:14px;
@@ -533,20 +543,29 @@ body::before{
 }
 .skill-tag:hover{background:rgba(26,108,255,.15)}
 
-/* ─── RESUME SECTION ─── */
 .resume-section{
   background:var(--card);border:1px solid var(--line);
   border-radius:var(--r2);padding:24px;margin-bottom:14px;
 }
 .rs-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 .rs-title{font-size:1rem;font-weight:900;letter-spacing:-.03em}
+
+/* ── UPDATED BADGE: Creative Minds ── */
 .ai-badge{
-  display:inline-flex;align-items:center;gap:5px;
-  background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.25);
-  color:#a78bfa;padding:4px 11px;border-radius:999px;
-  font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  display:inline-flex;align-items:center;gap:6px;
+  background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(0,196,140,.1));
+  border:1px solid rgba(124,58,237,.3);
+  color:#c4b5fd;padding:5px 13px;border-radius:999px;
+  font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+  position:relative;overflow:hidden;
 }
-.ai-badge::before{content:'✦';font-size:.7rem}
+.ai-badge::before{content:'✦';font-size:.75rem;color:var(--mint);animation:pulse 2s ease-in-out infinite}
+.ai-badge::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,transparent 60%);
+  pointer-events:none;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
 
 .rs-upload{
   border:2px dashed var(--line2);border-radius:14px;
@@ -606,7 +625,6 @@ body::before{
   color:var(--sky);min-width:40px;text-align:right;
 }
 
-/* ─── NETWORK ─── */
 .people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 .people-card{
   background:var(--card);border:1px solid var(--line);
@@ -626,7 +644,6 @@ body::before{
 .connect-btn:hover{background:var(--sky);color:#fff;border-color:var(--sky)}
 .connect-btn:disabled{background:rgba(0,196,140,.1);color:var(--mint);border-color:rgba(0,196,140,.3)}
 
-/* ─── SUGGESTIONS ─── */
 .suggest-item{
   display:flex;align-items:center;gap:11px;padding:10px 14px;
   transition:background .2s;border-bottom:1px solid var(--line);
@@ -643,7 +660,6 @@ body::before{
 }
 .s-connect-btn:hover{background:var(--sky);color:#fff}
 
-/* ─── MODAL ─── */
 .modal-bg{
   display:none;position:fixed;inset:0;
   background:rgba(0,0,0,.7);backdrop-filter:blur(8px);
@@ -681,14 +697,12 @@ body::before{
 }
 .modal-save:hover{background:var(--sky2);transform:translateY(-1px);box-shadow:0 6px 20px rgba(26,108,255,.3)}
 
-/* ─── TAGS ─── */
 .tag{display:inline-block;padding:3px 10px;border-radius:6px;font-size:.7rem;font-weight:800;letter-spacing:-.01em}
 .tag-blue{background:rgba(26,108,255,.1);border:1px solid rgba(26,108,255,.2);color:var(--sky)}
 .tag-green{background:rgba(0,196,140,.1);border:1px solid rgba(0,196,140,.2);color:var(--mint)}
 .tag-purple{background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);color:#a78bfa}
 .tag-amber{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:var(--amber)}
 
-/* ─── MISC ─── */
 .page{display:none}.page.show{display:block}
 .spinner{
   width:32px;height:32px;border:2.5px solid var(--line2);
@@ -703,7 +717,6 @@ body::before{
 .empty-state h3{font-size:1rem;font-weight:900;color:var(--text);margin-bottom:6px;letter-spacing:-.02em}
 .empty-state p{font-size:.83rem}
 
-/* ─── NOTIFICATION ─── */
 .notif{
   position:fixed;bottom:22px;right:22px;
   background:var(--mint);color:#051a12;
@@ -714,6 +727,40 @@ body::before{
 }
 .notif.show{transform:translateY(0);opacity:1}
 .notif.err{background:var(--rose);color:#fff}
+
+/* invite modal styles */
+.invite-methods{display:flex;flex-direction:column;gap:10px}
+.invite-method-btn{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;
+  background:var(--ink3);border:1px solid var(--line);border-radius:12px;
+  color:var(--text);text-align:left;transition:all .2s;width:100%;
+}
+.invite-method-btn:hover{border-color:var(--sky);background:rgba(26,108,255,.05)}
+.im-icon{font-size:1.4rem;flex-shrink:0}
+.im-info{flex:1}
+.im-title{font-size:.88rem;font-weight:800;letter-spacing:-.01em}
+.im-sub{font-size:.74rem;color:var(--muted);margin-top:2px}
+.invite-link-box{display:flex;gap:8px}
+.invite-link-box input{
+  flex:1;background:var(--ink3);border:1px solid var(--line);border-radius:8px;
+  padding:9px 12px;color:var(--muted);font-size:.78rem;outline:none;
+}
+.invite-link-box button{
+  padding:9px 16px;background:var(--sky);border:none;border-radius:8px;
+  color:#fff;font-size:.78rem;font-weight:800;transition:all .2s;
+}
+.invite-link-box button:hover{background:var(--sky2)}
+
+/* avatar upload wrap */
+.avatar-upload-wrap{position:relative;display:inline-block;cursor:pointer}
+.avatar-upload-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.avatar-overlay{
+  position:absolute;inset:0;border-radius:50%;
+  background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;
+  font-size:.65rem;font-weight:800;color:#fff;opacity:0;
+  transition:opacity .2s;
+}
+.avatar-upload-wrap:hover .avatar-overlay{opacity:1}
 </style>
 </head>
 <body>
@@ -772,8 +819,6 @@ body::before{
   <!-- ── FEED PAGE ── -->
   <div class="page show" id="page-feed">
     <div class="main-layout">
-
-      <!-- LEFT SIDEBAR -->
       <div class="sidebar-left">
         <div class="s-card">
           <div class="s-card-hero">
@@ -794,7 +839,6 @@ body::before{
         </div>
       </div>
 
-      <!-- CENTER FEED -->
       <div class="feed">
         <div class="composer">
           <div class="composer-top">
@@ -816,7 +860,6 @@ body::before{
         </div>
       </div>
 
-      <!-- RIGHT SIDEBAR -->
       <div class="sidebar-right">
         <div class="s-card">
           <div style="padding:14px 14px 0">
@@ -830,7 +873,6 @@ body::before{
           <button style="margin-top:12px;width:100%;padding:8px;border-radius:8px;border:1px dashed var(--line2);background:transparent;color:var(--muted);font-size:.76rem;font-weight:700;cursor:pointer;transition:all .2s" onclick="openEditProfile()" onmouseover="this.style.borderColor='var(--sky)';this.style.color='var(--sky)'" onmouseout="this.style.borderColor='var(--line2)';this.style.color='var(--muted)'">+ Add skills</button>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -866,14 +908,15 @@ body::before{
       <div>
         <div class="resume-section">
           <div class="rs-header">
-            <div class="rs-title">Resume & AI Analysis</div>
-            <span class="ai-badge">AI Powered</span>
+            <div class="rs-title">Resume &amp; AI Analysis</div>
+            <!-- ✅ CHANGED: "AI Powered" → "Creative Minds" -->
+            <span class="ai-badge">Creative Minds</span>
           </div>
           <div class="rs-upload" id="resumeDropZone">
             <input type="file" id="resumeFileInput" accept=".pdf,.txt" onchange="handleResumeUpload(this)" />
             <span class="icon">⬆</span>
             <h4>Drop your resume here</h4>
-            <p><strong>PDF or TXT</strong> — AI analyzes skills, ATS score & job matches</p>
+            <p><strong>PDF or TXT</strong> — AI analyzes skills, ATS score &amp; job matches</p>
           </div>
           <div id="resumeLoading" style="display:none" class="loading-wrap">
             <div class="spinner"></div>
@@ -907,17 +950,13 @@ body::before{
   <div class="modal">
     <button class="modal-close" onclick="closeModal('editProfileModal')">✕</button>
     <h2>Edit Profile</h2>
-
-    <!-- Avatar upload -->
     <div style="display:flex;justify-content:center;margin-bottom:20px">
       <div class="avatar-upload-wrap">
         <div class="avatar xl" id="ep_avatarPreview"></div>
         <div class="avatar-overlay">📷 Change</div>
-        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
-               onchange="previewAvatar(this)" id="ep_avatarInput" />
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="previewAvatar(this)" id="ep_avatarInput" />
       </div>
     </div>
-
     <div class="mfield"><label>Full name</label><input id="ep_name" /></div>
     <div class="mfield"><label>Headline</label><input id="ep_headline" placeholder="e.g. Senior Engineer at Google" /></div>
     <div class="mfield"><label>Location</label><input id="ep_location" placeholder="e.g. Hyderabad, IN" /></div>
@@ -932,32 +971,21 @@ body::before{
   <div class="modal">
     <button class="modal-close" onclick="closeModal('inviteModal')">✕</button>
     <h2>Invite to gathR</h2>
-    <p style="color:var(--muted);font-size:.83rem;margin-bottom:18px">
-      Invite your contacts to join your professional network on gathR.
-    </p>
+    <p style="color:var(--muted);font-size:.83rem;margin-bottom:18px">Invite your contacts to join your professional network on gathR.</p>
     <div class="invite-methods">
       <button class="invite-method-btn" onclick="inviteViaWhatsApp()">
         <span class="im-icon">💬</span>
-        <div class="im-info">
-          <div class="im-title">WhatsApp</div>
-          <div class="im-sub">Send invite via WhatsApp message</div>
-        </div>
+        <div class="im-info"><div class="im-title">WhatsApp</div><div class="im-sub">Send invite via WhatsApp message</div></div>
         <span style="color:var(--muted);font-size:.8rem">→</span>
       </button>
       <button class="invite-method-btn" onclick="inviteViaSMS()">
         <span class="im-icon">📱</span>
-        <div class="im-info">
-          <div class="im-title">SMS / Text Message</div>
-          <div class="im-sub">Open your default messaging app</div>
-        </div>
+        <div class="im-info"><div class="im-title">SMS / Text Message</div><div class="im-sub">Open your default messaging app</div></div>
         <span style="color:var(--muted);font-size:.8rem">→</span>
       </button>
       <button class="invite-method-btn" onclick="inviteViaEmail()">
         <span class="im-icon">📧</span>
-        <div class="im-info">
-          <div class="im-title">Email</div>
-          <div class="im-sub">Send a professional invitation by email</div>
-        </div>
+        <div class="im-info"><div class="im-title">Email</div><div class="im-sub">Send a professional invitation by email</div></div>
         <span style="color:var(--muted);font-size:.8rem">→</span>
       </button>
     </div>
@@ -986,7 +1014,6 @@ async function checkSession() {
   } catch(e) {}
 }
 
-// ── AUTH ──
 function showAuthTab(tab) {
   document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('loginForm').style.display=tab==='login'?'block':'none';
@@ -1026,7 +1053,6 @@ function showAuthErr(msg){
   el.textContent=msg; el.classList.add('show');
 }
 
-// ── APP ──
 function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('appShell').classList.add('show');
@@ -1059,7 +1085,6 @@ function renderSkillTags(cid,skills){
   el.innerHTML=skills.map(s=>`<span class="skill-tag">${s}</span>`).join('');
 }
 
-// ── PAGES ──
 function showPage(page){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.tnav').forEach(b=>b.classList.remove('active'));
@@ -1071,7 +1096,6 @@ function showPage(page){
   if(page==='network')loadNetwork();
 }
 
-// ── FEED ──
 async function loadFeed(){
   const r=await fetch('/api/posts');
   const posts=await r.json();
@@ -1127,13 +1151,11 @@ function renderPost(p){
   </div>`;
 }
 
-// ── LIKE ──
 async function toggleLike(postId){
   await fetch('/api/posts/'+postId+'/like',{method:'POST'});
   loadFeed();
 }
 
-// ── COMMENT ──
 function toggleComment(postId){
   const box=document.getElementById('comment-box-'+postId);
   box.style.display=box.style.display==='none'?'block':'none';
@@ -1147,13 +1169,11 @@ function submitComment(postId){
   toggleComment(postId);
 }
 
-// ── SHARE ──
 function sharePost(postId){
   const url=window.location.origin+'#post-'+postId;
   navigator.clipboard.writeText(url).then(()=>showNotif('Link copied! ↗')).catch(()=>showNotif('Share: '+url));
 }
 
-// ── DELETE ──
 async function deletePost(postId){
   if(!confirm('Delete this post?'))return;
   const r=await fetch('/api/posts/'+postId,{method:'DELETE'});
@@ -1164,7 +1184,6 @@ async function deletePost(postId){
   loadProfilePosts();
 }
 
-// ── EDIT ──
 function editPost(postId, currentContent){
   const contentEl=document.getElementById('post-content-'+postId);
   contentEl.innerHTML=`
@@ -1220,7 +1239,6 @@ function addEmoji(){
   document.getElementById('postText').value+=' '+emojis[Math.floor(Math.random()*emojis.length)];
 }
 
-// ── PROFILE ──
 async function loadProfilePosts(){
   const r=await fetch('/api/posts?mine=1');
   const posts=await r.json();
@@ -1228,7 +1246,7 @@ async function loadProfilePosts(){
   if(!posts.length){c.innerHTML='<div class="empty-state"><span class="icon">✦</span><h3>No posts yet</h3><p>Share your first update!</p></div>';return}
   c.innerHTML=posts.map(renderPost).join('');
 }
-// ── AVATAR ──
+
 let avatarBase64 = null;
 
 function previewAvatar(input){
@@ -1238,7 +1256,6 @@ function previewAvatar(input){
     avatarBase64=e.target.result;
     const prev=document.getElementById('ep_avatarPreview');
     prev.innerHTML=`<img src="${avatarBase64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-    // update all avatars live
     updateAllAvatars(avatarBase64);
   };
   reader.readAsDataURL(input.files[0]);
@@ -1259,7 +1276,6 @@ function openEditProfile(){
   document.getElementById('ep_location').value=ME.location||'';
   document.getElementById('ep_about').value=ME.about||'';
   document.getElementById('ep_skills').value=JSON.parse(ME.skills||'[]').join(', ');
-  // set avatar preview
   const prev=document.getElementById('ep_avatarPreview');
   const ini=ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   prev.innerHTML=ME.avatar
@@ -1288,34 +1304,24 @@ async function saveProfile(){
   showNotif('Profile updated! ✓');
 }
 
-// ── INVITE ──
 function openInviteModal(){
   const link=window.location.origin+'?ref='+(ME.id||'');
   document.getElementById('inviteLinkInput').value=link;
   openModal('inviteModal');
 }
-
 function getInviteText(){
   return `Hey! I'm using gathR, a professional network. Join me here: ${window.location.origin}?ref=${ME.id||''}`;
 }
-
 function inviteViaWhatsApp(){
-  const text=encodeURIComponent(getInviteText());
-  window.open('https://wa.me/?text='+text,'_blank');
+  window.open('https://wa.me/?text='+encodeURIComponent(getInviteText()),'_blank');
 }
-
 function inviteViaSMS(){
-  const text=encodeURIComponent(getInviteText());
-  // works on mobile — opens default SMS app
-  window.open('sms:?body='+text,'_blank');
+  window.open('sms:?body='+encodeURIComponent(getInviteText()),'_blank');
 }
-
 function inviteViaEmail(){
   const subject=encodeURIComponent('Join me on gathR — Professional Network');
-  const body=encodeURIComponent(getInviteText());
-  window.open('mailto:?subject='+subject+'&body='+body,'_blank');
+  window.open('mailto:?subject='+subject+'&body='+encodeURIComponent(getInviteText()),'_blank');
 }
-
 function copyInviteLink(){
   const input=document.getElementById('inviteLinkInput');
   navigator.clipboard.writeText(input.value)
@@ -1323,7 +1329,6 @@ function copyInviteLink(){
     .catch(()=>{input.select();document.execCommand('copy');showNotif('Link copied! ✓')});
 }
 
-// ── RESUME ──
 const rdz=document.getElementById('resumeDropZone');
 rdz.addEventListener('dragover',e=>{e.preventDefault();rdz.classList.add('drag')});
 rdz.addEventListener('dragleave',()=>rdz.classList.remove('drag'));
@@ -1410,7 +1415,6 @@ function loadSavedAnalysis(){
   }
 }
 
-// ── NETWORK ──
 async function loadSuggestions(){
   const r=await fetch('/api/users');
   const users=await r.json();
@@ -1443,7 +1447,6 @@ async function connect(userId,btn){
   showNotif('Connection sent!');
 }
 
-// ── UTILS ──
 function openModal(id){document.getElementById(id).classList.add('show')}
 function closeModal(id){document.getElementById(id).classList.remove('show')}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
@@ -1467,6 +1470,7 @@ function showNotif(msg,isErr=false){
 </script>
 </body>
 </html>"""
+
 
 # ══════════════════════════════════════════════
 #  API ROUTES
@@ -1616,6 +1620,7 @@ def like_post(post_id):
     db.execute("UPDATE posts SET likes=? WHERE id=?", (json.dumps(likes), post_id))
     db.commit()
     return jsonify({"ok": True})
+
 # ── USERS ──
 @app.route("/api/users")
 @login_required
@@ -1663,11 +1668,15 @@ def analyze_resume():
         resume_text = extract_pdf(fb)
     elif fname.endswith(".txt"):
         resume_text = fb.decode("utf-8", errors="ignore")
+        # sanitize TXT the same way
+        resume_text = unicodedata.normalize("NFKD", resume_text)
+        resume_text = "".join(
+            c if (32 <= ord(c) < 127 or c in "\n\r\t") else " "
+            for c in resume_text
+        )
     else:
         return jsonify({"error": "Upload PDF or TXT only"}), 400
 
-    # ── aggressive clean: strip every non-ASCII character ──
-    resume_text = resume_text.encode("ascii", errors="ignore").decode("ascii")
     resume_text = re.sub(r"[ \t]+", " ", resume_text)
     resume_text = re.sub(r"\n{3,}", "\n\n", resume_text).strip()
 
@@ -1704,7 +1713,6 @@ Only include jobs with match_pct >= 20, sorted descending by match_pct."""
             messages=[{"role": "user", "content": prompt}]
         )
         raw = msg.content[0].text.strip()
-        # strip markdown fences if model adds them
         raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
         ai_data = json.loads(raw)
     except json.JSONDecodeError as e:
