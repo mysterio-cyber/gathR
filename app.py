@@ -1684,9 +1684,10 @@ def analyze_resume():
         return jsonify({"error": "Could not read resume content. Try a text-based PDF."}), 400
 
     def to_ascii(s):
-    s = unicodedata.normalize("NFKD", str(s))
-    return s.encode("ascii", errors="ignore").decode("ascii")
-    
+        """Safely collapse any string to plain ASCII for prompt safety."""
+        s = unicodedata.normalize("NFKD", str(s))
+        return s.encode("ascii", errors="ignore").decode("ascii")
+
     # Build jobs list using only ASCII — strips ₹ and other non-ASCII salary symbols
     jobs_str = "\n".join(
         f"- {to_ascii(j['title'])} at {to_ascii(j['company'])} | {', '.join(to_ascii(sk) for sk in j['skills'])}"
