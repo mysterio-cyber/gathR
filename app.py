@@ -1,5 +1,3 @@
-Python 3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)] on darwin
-Enter "help" below or click "Help" above for more information.
 """
 gathR v2 — Corporate Professional Network
 Adds: Search, Notifications, Real-time Comments, Analytics Dashboard,
@@ -686,7 +684,7 @@ button{cursor:pointer}
     <button class="logout-btn" onclick="doLogout()">Sign out</button>
   </div>
 
-  <!-- ══ FEED PAGE ══ -->
+  <!-- FEED PAGE -->
   <div class="page show" id="page-feed">
     <div class="main-layout">
       <div class="sidebar-left">
@@ -744,7 +742,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ PROFILE PAGE ══ -->
+  <!-- PROFILE PAGE -->
   <div class="page" id="page-profile">
     <div class="main-layout">
       <div></div>
@@ -769,7 +767,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ RESUME PAGE ══ -->
+  <!-- RESUME PAGE -->
   <div class="page" id="page-resume">
     <div class="main-layout">
       <div></div>
@@ -795,7 +793,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ ANALYTICS PAGE ══ -->
+  <!-- ANALYTICS PAGE -->
   <div class="page" id="page-analytics">
     <div class="main-layout">
       <div></div>
@@ -806,7 +804,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ JOBS PAGE ══ -->
+  <!-- JOBS PAGE -->
   <div class="page" id="page-jobs">
     <div class="main-layout">
       <div></div>
@@ -831,7 +829,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ NOTIFICATIONS PAGE ══ -->
+  <!-- NOTIFICATIONS PAGE -->
   <div class="page" id="page-notifications">
     <div class="main-layout">
       <div></div>
@@ -848,7 +846,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ MESSAGES PAGE ══ -->
+  <!-- MESSAGES PAGE -->
   <div class="page" id="page-messages">
     <div class="main-layout" style="grid-template-columns:1fr">
       <div class="dm-layout" id="dmLayout">
@@ -864,7 +862,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ AI CHAT PAGE ══ -->
+  <!-- AI CHAT PAGE -->
   <div class="page" id="page-ai">
     <div class="main-layout" style="grid-template-columns:1fr">
       <div class="ai-chat-container">
@@ -896,7 +894,7 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- ══ NETWORK PAGE ══ -->
+  <!-- NETWORK PAGE -->
   <div class="page" id="page-network">
     <div class="main-layout">
       <div></div>
@@ -963,7 +961,7 @@ async function checkSession() {
   } catch(e) {}
 }
 
-// ── AUTH ──
+// AUTH
 function showAuthTab(tab) {
   document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('loginForm').style.display = tab==='login'?'block':'none';
@@ -1003,7 +1001,7 @@ function showAuthErr(msg) {
   el.textContent = msg; el.classList.add('show');
 }
 
-// ── APP INIT ──
+// APP INIT
 async function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('appShell').classList.add('show');
@@ -1038,7 +1036,7 @@ function renderSkillTags(cid, skills) {
   el.innerHTML = skills.map(s=>`<span class="skill-tag">${s}</span>`).join('');
 }
 
-// ── PAGES ──
+// PAGES
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.tnav').forEach(b=>b.classList.remove('active'));
@@ -1054,7 +1052,7 @@ function showPage(page) {
   if (page==='messages') loadDMConvos();
 }
 
-// ── SEARCH ──
+// SEARCH
 async function doSearch(q) {
   const sr = document.getElementById('searchResults');
   if (!q || q.length < 2) { sr.classList.remove('show'); return; }
@@ -1088,7 +1086,7 @@ function hideSearch() { document.getElementById('searchResults').classList.remov
 function goToUser(id) { hideSearch(); showPage('network'); }
 function goToPost(id) { hideSearch(); showPage('feed'); setTimeout(()=>{ const el=document.getElementById('post-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },200); }
 
-// ── FEED ──
+// FEED
 async function loadFeed() {
   const r = await fetch('/api/posts');
   allPosts = await r.json();
@@ -1254,7 +1252,7 @@ async function loadProfilePosts() {
   c.innerHTML = posts.map(renderPost).join('');
 }
 
-// ── ANALYTICS ──
+// ANALYTICS
 async function loadAnalytics() {
   const [postsR, usersR, notifR] = await Promise.all([fetch('/api/posts'), fetch('/api/users'), fetch('/api/notifications')]);
   const posts = await postsR.json();
@@ -1309,7 +1307,7 @@ async function loadAnalytics() {
   `;
 }
 
-// ── JOBS ──
+// JOBS
 let currentJobFilter = 'all';
 async function loadAppliedJobs() {
   const r = await fetch('/api/jobs/applied');
@@ -1372,7 +1370,7 @@ async function applyJob(jobId, title, company, btn) {
   btn.parentElement.innerHTML = '<div class="applied-tag">✓ Applied</div>';
 }
 
-// ── NOTIFICATIONS ──
+// NOTIFICATIONS
 async function loadNotifBadge() {
   const r = await fetch('/api/notifications');
   const notifs = await r.json();
@@ -1406,7 +1404,7 @@ async function markAllRead() {
   loadNotifications();
 }
 
-// ── MESSAGES ──
+// MESSAGES
 async function loadMsgBadge() {
   const r = await fetch('/api/messages/unread_count');
   const d = await r.json();
@@ -1494,7 +1492,7 @@ function openNewDM() {
 }
 function startAIChat() { closeModal('newDMModal'); showPage('ai'); }
 
-// ── AI CHAT ──
+// AI CHAT
 async function sendAIMessage() {
   const input = document.getElementById('aiInput');
   const msg = input.value.trim();
@@ -1556,7 +1554,7 @@ function aiKeydown(e) {
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
 }
 
-// ── NETWORK ──
+// NETWORK
 async function loadSuggestions() {
   const others = allUsers.filter(u=>u.id!==ME.id).slice(0,4);
   document.getElementById('suggestions').innerHTML = others.length ?
@@ -1582,8 +1580,7 @@ async function loadNetwork() {
 function sendMessage(userId) { showPage('messages'); setTimeout(()=>{ const u=allUsers.find(u=>u.id===userId); if(u)openDMChat(u); },100); }
 function sendDMFrom(userId) { const u=allUsers.find(u=>u.id===userId); if(u){ showPage('messages'); setTimeout(()=>openDMChat(u),100); } }
 
-// ── PROFILE ──
-let avatarBase64 = null;
+// PROFILE
 function previewAvatar(input) {
   if (!input.files[0]) return;
   const reader = new FileReader();
@@ -1632,7 +1629,7 @@ async function saveProfile() {
   refreshUserUI(); closeModal('editProfileModal'); showToast('Profile updated! ✓');
 }
 
-// ── RESUME ──
+// RESUME
 const rdz = document.getElementById('resumeDropZone');
 if (rdz) {
   rdz.addEventListener('dragover',e=>{e.preventDefault();rdz.classList.add('drag')});
@@ -1684,7 +1681,7 @@ function loadSavedAnalysis() {
   }
 }
 
-// ── UTILS ──
+// UTILS
 function openModal(id){document.getElementById(id).classList.add('show')}
 function closeModal(id){document.getElementById(id).classList.remove('show')}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
@@ -1706,8 +1703,7 @@ function showToast(msg, isErr=false) {
 }
 </script>
 
-<!-- Jobs DB injected server-side -->
-<script id="jobsDBData" type="application/json">{{ jobs_db_json }}</script>
+<script id="jobsDBData" type="application/json">__JOBS_DB__</script>
 
 </body>
 </html>"""
@@ -1719,11 +1715,10 @@ function showToast(msg, isErr=false) {
 
 @app.route("/")
 def index():
-    import json as _json
-    jobs_json = _json.dumps(JOBS_DB)
-    return render_template_string(HTML.replace('{{ jobs_db_json }}', jobs_json))
+    jobs_json = json.dumps(JOBS_DB)
+    return HTML.replace('__JOBS_DB__', jobs_json)
 
-# ── AUTH ──
+# AUTH
 @app.route("/api/register", methods=["POST"])
 def register():
     d = request.json
@@ -1767,7 +1762,7 @@ def me():
     if not u: return jsonify({"error": "Not authenticated"}), 401
     return jsonify(row_to_dict(u))
 
-# ── PROFILE ──
+# PROFILE
 @app.route("/api/profile", methods=["PUT"])
 @login_required
 def update_profile():
@@ -1779,7 +1774,7 @@ def update_profile():
     user = row_to_dict(db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone())
     return jsonify(user)
 
-# ── POSTS ──
+# POSTS
 @app.route("/api/posts", methods=["GET"])
 @login_required
 def get_posts():
@@ -1812,7 +1807,6 @@ def create_post():
     db.execute("INSERT INTO posts (user_id,content,file_url,file_name,file_type) VALUES (?,?,?,?,?)",
                (session["user_id"], content, file_url, file_name, file_type))
     db.commit()
-    # notify all users (simplified broadcast)
     user = current_user()
     all_users = db.execute("SELECT id FROM users WHERE id!=?", (session["user_id"],)).fetchall()
     for u in all_users:
@@ -1862,7 +1856,7 @@ def like_post(post_id):
     db.commit()
     return jsonify({"ok": True})
 
-# ── COMMENTS ──
+# COMMENTS
 @app.route("/api/posts/<int:post_id>/comments", methods=["GET"])
 @login_required
 def get_comments(post_id):
@@ -1887,7 +1881,7 @@ def add_comment(post_id):
         add_notification(post["user_id"], "comment", f"{user['name']} commented on your post")
     return jsonify({"ok": True})
 
-# ── USERS ──
+# USERS
 @app.route("/api/users")
 @login_required
 def get_users():
@@ -1895,7 +1889,7 @@ def get_users():
     rows = db.execute("SELECT id,name,email,headline,location,skills FROM users").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# ── NOTIFICATIONS ──
+# NOTIFICATIONS
 @app.route("/api/notifications")
 @login_required
 def get_notifications():
@@ -1912,7 +1906,7 @@ def mark_notifications_read():
     db.commit()
     return jsonify({"ok": True})
 
-# ── MESSAGES ──
+# MESSAGES
 @app.route("/api/messages", methods=["POST"])
 @login_required
 def send_message():
@@ -1966,7 +1960,7 @@ def unread_count():
     row = db.execute("SELECT COUNT(*) as cnt FROM messages WHERE to_user=? AND read=0", (session["user_id"],)).fetchone()
     return jsonify({"count": row["cnt"]})
 
-# ── JOBS ──
+# JOBS
 @app.route("/api/jobs/apply", methods=["POST"])
 @login_required
 def apply_job():
@@ -1992,7 +1986,7 @@ def get_applied():
                       (session["user_id"],)).fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# ── AI CHAT ──
+# AI CHAT
 @app.route("/api/ai/chat", methods=["POST"])
 @login_required
 def ai_chat():
@@ -2028,7 +2022,6 @@ Keep responses under 200 words unless complex technical advice is needed."""
             messages=safe_messages
         )
         reply = msg.content[0].text
-        # Save to DB
         db = get_db()
         if messages:
             last = messages[-1]
@@ -2049,7 +2042,7 @@ def clear_ai_chat():
     db.commit()
     return jsonify({"ok": True})
 
-# ── CONNECTIONS ──
+# CONNECTIONS
 @app.route("/api/connect", methods=["POST"])
 @login_required
 def connect_user():
@@ -2064,7 +2057,7 @@ def connect_user():
         add_notification(to, "connection", f"{user['name']} wants to connect with you")
     return jsonify({"ok": True})
 
-# ── RESUME AI ──
+# RESUME AI
 @app.route("/api/analyze_resume", methods=["POST"])
 @login_required
 def analyze_resume():
@@ -2147,7 +2140,7 @@ Only include jobs with match_pct >= 20, sorted descending by match_pct."""
     db.commit()
     return jsonify(result)
 
-# ── STATIC ──
+# STATIC
 from flask import send_from_directory
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
@@ -2155,4 +2148,3 @@ def uploaded_file(filename):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-           
