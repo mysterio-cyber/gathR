@@ -1255,6 +1255,7 @@ function showPage(page) {
   if (page==='analytics') loadAnalytics();
   if (page==='jobs') loadJobs();
   if (page==='messages') loadDMConvos();
+  if (page==='ai') loadAIChatHistory();
 }
 
 // ── SEARCH ────────────────────────────────
@@ -1819,6 +1820,20 @@ function openNewDM() {
 }
 
 // ── AI CHAT ───────────────────────────────
+async function loadAIChatHistory() {
+  // Load persisted history from server so conversation survives page refresh
+  try {
+    const r = await fetch('/api/ai/history');
+    if (!r.ok) return;
+    const msgs = await r.json();
+    if (!msgs.length) return;
+    const container = document.getElementById('aiMessages');
+    container.innerHTML = ''; // clear welcome message
+    msgs.forEach(m => appendAIMsg(m.role, m.content));
+    aiChatHistory = msgs.map(m => ({role: m.role, content: m.content}));
+  } catch(e) {}
+}
+
 async function sendAIMessage() {
   const input = document.getElementById('aiInput');
   const msg = input.value.trim();
@@ -1829,27 +1844,29 @@ async function sendAIMessage() {
   const btn = document.getElementById('aiSendBtn');
   btn.disabled=true;
   appendTyping();
-  aiChatHistory.push({role:'user',content:msg});
+  // Add to local history immediately
+  aiChatHistory.push({role:'user', content:msg});
   try {
     const r = await fetch('/api/ai/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        messages:aiChatHistory,
-        user:{name:ME.name,headline:ME.headline,skills:ME.skills,about:ME.about}
+        messages: aiChatHistory,
+        user: {name:ME.name, headline:ME.headline, skills:ME.skills, about:ME.about}
       })
     });
     const d = await r.json();
     removeTyping();
     if (d.error) {
-      // Show the actual error message from the server
-      appendAIMsg('assistant', '⚠️ ' + (d.error || 'Something went wrong. Please try again.'), true);
+      aiChatHistory.pop(); // remove the failed user message
+      appendAIMsg('assistant', '⚠️ ' + d.error, true);
     } else {
       appendAIMsg('assistant', d.reply);
-      aiChatHistory.push({role:'assistant',content:d.reply});
+      aiChatHistory.push({role:'assistant', content:d.reply});
     }
   } catch(e) {
     removeTyping();
+    aiChatHistory.pop();
     appendAIMsg('assistant', '⚠️ Network error — please check your connection and try again.', true);
   }
   btn.disabled=false;
@@ -1860,12 +1877,44 @@ function sendAISuggestion(btn) {
   sendAIMessage();
 }
 
+function renderMarkdown(text) {
+  // Escape HTML first
+  let s = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Code blocks (``` ... ```)
+  s = s.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:'Geist Mono',monospace;font-size:.78rem;overflow-x:auto;margin:8px 0;white-space:pre-wrap">$1</pre>');
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:'Geist Mono',monospace;font-size:.82em">$1</code>');
+  // Bold
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Headers
+  s = s.replace(/^### (.+)$/gm, '<div style="font-size:.9rem;font-weight:900;color:var(--text);margin:12px 0 5px;letter-spacing:-.02em">$1</div>');
+  s = s.replace(/^## (.+)$/gm, '<div style="font-size:.95rem;font-weight:900;color:var(--text);margin:14px 0 6px;letter-spacing:-.02em">$1</div>');
+  s = s.replace(/^# (.+)$/gm, '<div style="font-size:1rem;font-weight:900;color:var(--sky);margin:14px 0 6px;letter-spacing:-.03em">$1</div>');
+  // Bullet lists (- item or * item)
+  s = s.replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;margin-top:2px">•</span><span>$1</span></div>');
+  // Numbered lists
+  s = s.replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;font-family:'Geist Mono',monospace;font-size:.82em;margin-top:2px">$1.</span><span>$2</span></div>');
+  // Horizontal rule
+  s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--line);margin:10px 0">');
+  // Line breaks
+  s = s.replace(/
+
+/g, '<div style="height:8px"></div>');
+  s = s.replace(/
+/g, '<br>');
+  return s;
+}
+
 function appendAIMsg(role, content, isError=false) {
   const icon = role==='user' ? (ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)) : '✦';
   const container = document.getElementById('aiMessages');
   const el = document.createElement('div');
   el.className = `ai-msg ${role}`;
-  el.innerHTML = `<div class="ai-msg-icon">${icon}</div><div class="ai-bubble${isError?' error':''}">${escHtml(content)}</div>`;
+  const rendered = isError ? escHtml(content) : (role === 'assistant' ? renderMarkdown(content) : escHtml(content));
+  el.innerHTML = `<div class="ai-msg-icon">${icon}</div><div class="ai-bubble${isError?' error':''}">${rendered}</div>`;
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
@@ -1884,9 +1933,9 @@ function removeTyping() {
 }
 async function clearAIChat() {
   await fetch('/api/ai/clear', {method:'POST'});
-  aiChatHistory=[];
-  document.getElementById('aiMessages').innerHTML=`<div class="ai-msg assistant"><div class="ai-msg-icon">✦</div><div class="ai-bubble">Chat cleared! How can I help you with your career today?</div></div>`;
-  document.getElementById('aiSuggestions').style.display='flex';
+  aiChatHistory = [];
+  document.getElementById('aiMessages').innerHTML = `<div class="ai-msg assistant"><div class="ai-msg-icon">✦</div><div class="ai-bubble">Chat cleared! I'm ready to help — ask me anything about your career, interviews, resume, or any topic.</div></div>`;
+  document.getElementById('aiSuggestions').style.display = 'flex';
 }
 function aiKeydown(e) {
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
@@ -2384,56 +2433,102 @@ def ai_chat():
     messages = d.get("messages", [])
     user_ctx = d.get("user", {})
 
-    # Use safe_str on every user field so non-ASCII (Telugu, Hindi, emoji)
-    # never triggers a codec error inside the Anthropic SDK.
-    system = """You are gathR AI, a friendly professional career coach and networking assistant for the gathR professional network platform.
+    system = """You are gathR AI — a sharp, knowledgeable career coach and professional network assistant built into the gathR platform. You have the knowledge and capability of a top-tier AI assistant.
 
-User context:
+User profile:
 - Name: {name}
-- Headline: {headline}
+- Role: {headline}
 - Skills: {skills}
 - About: {about}
 
-You help with:
-- Career advice, job search strategies, and interview preparation
-- Resume improvement tips (ATS optimization, formatting, content)
-- Networking and relationship building strategies
-- LinkedIn and professional profile optimization
-- Salary negotiation and career transitions
-- Technical skill development recommendations
-- Writing professional messages, emails, and outreach
+Your capabilities:
+- Deep career advice personalised to the user's background
+- Resume writing, ATS optimisation, cover letters
+- Interview prep — behavioural, technical, case studies
+- Salary negotiation tactics and scripts
+- Job search strategy and LinkedIn optimisation
+- Networking outreach messages and templates
+- Career change roadmaps and skill gap analysis
+- General questions on any topic — you are a capable, general-purpose AI
 
-Be concise, actionable, and encouraging. Use the user's context to personalize advice.
-Keep responses under 200 words unless complex technical advice is needed.""".format(
+Behaviour rules:
+- Be direct, specific, and genuinely helpful — not vague or generic
+- Use markdown formatting: **bold** for emphasis, bullet lists for steps, headers for sections
+- Give real, actionable advice with concrete examples
+- Match the user's language and tone
+- If asked something outside careers (coding, maths, general knowledge), answer it fully — do not refuse
+- Never say you "cannot" help with something you actually can
+- Keep responses focused but complete — do not truncate mid-thought""".format(
         name=safe_str(user_ctx.get("name"), "Unknown"),
-        headline=safe_str(user_ctx.get("headline")),
+        headline=safe_str(user_ctx.get("headline"), "Professional"),
         skills=safe_str(user_ctx.get("skills"), "[]"),
-        about=safe_str(user_ctx.get("about")),
+        about=safe_str(user_ctx.get("about"), ""),
     )
 
-    safe_messages = [
-        {"role": m["role"], "content": safe_str(m.get("content", ""))[:2000]}
-        for m in messages[-10:]
-    ]
+    # Load full conversation history from DB so context survives page refresh
+    db = get_db()
+    db_history = db.execute(
+        "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
+        (session["user_id"],)
+    ).fetchall()
+
+    # Merge DB history with any new messages from the client,
+    # deduplicate by keeping DB as source of truth + the latest user message
+    history = [{"role": r["role"], "content": safe_str(r["content"])} for r in db_history]
+
+    # Append the latest user message if it isn't already the last one in DB
+    if messages:
+        latest = messages[-1]
+        latest_content = safe_str(latest.get("content", ""))
+        if not history or history[-1]["role"] != "user" or history[-1]["content"] != latest_content:
+            history.append({"role": "user", "content": latest_content})
+
+    # Keep last 40 turns (20 exchanges) to stay within context limits
+    history = history[-40:]
+
+    # Ensure valid alternating roles (Anthropic requirement)
+    cleaned = []
+    for msg in history:
+        if cleaned and cleaned[-1]["role"] == msg["role"]:
+            # merge consecutive same-role messages
+            cleaned[-1]["content"] += "\n" + msg["content"]
+        else:
+            cleaned.append({"role": msg["role"], "content": msg["content"][:4000]})
+
+    if not cleaned or cleaned[-1]["role"] != "user":
+        return jsonify({"error": "No user message to respond to"}), 400
+
     try:
         msg = ai_client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=500,
+            max_tokens=1500,
             system=system,
-            messages=safe_messages
+            messages=cleaned
         )
         reply = msg.content[0].text
-        db = get_db()
+
+        # Persist this exchange to DB
         if messages:
-            last = messages[-1]
+            last_user_msg = safe_str(messages[-1].get("content", ""))
             db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                       (session["user_id"], last["role"], safe_str(last.get("content",""))[:2000]))
+                       (session["user_id"], "user", last_user_msg[:4000]))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                   (session["user_id"], "assistant", reply[:2000]))
+                   (session["user_id"], "assistant", reply[:4000]))
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/ai/history")
+@login_required
+def get_ai_history():
+    """Return the full chat history for the current user."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
+        (session["user_id"],)
+    ).fetchall()
+    return jsonify([{"role": r["role"], "content": r["content"]} for r in rows])
 
 @app.route("/api/ai/clear", methods=["POST"])
 @login_required
