@@ -2346,7 +2346,7 @@ def delete_company_job(job_id):
 @login_required
 def ai_chat():
     d = request.json
-    messages = d.get("messages", [])
+    messages = d.get("messages", [])  # full history from frontend
     user_ctx = d.get("user", {})
 
     system = """You are gathR AI — a sharp, knowledgeable career coach and professional network assistant built into the gathR platform.
@@ -2379,31 +2379,26 @@ Behaviour rules:
         about=safe_str(user_ctx.get("about"), ""),
     )
 
-    db = get_db()
-    db_history = db.execute(
-        "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
-        (session["user_id"],)
-    ).fetchall()
+    # Use frontend message history directly — it's the source of truth
+    if not messages:
+        return jsonify({"error": "No messages provided"}), 400
 
-    history = [{"role": r["role"], "content": safe_str(r["content"])} for r in db_history]
-
-    if messages:
-        latest = messages[-1]
-        latest_content = safe_str(latest.get("content", ""))
-        if not history or history[-1]["role"] != "user" or history[-1]["content"] != latest_content:
-            history.append({"role": "user", "content": latest_content})
-
-    history = history[-40:]
-
+    # Sanitise and trim to last 40 messages
     cleaned = []
-    for msg in history:
-        if cleaned and cleaned[-1]["role"] == msg["role"]:
-            cleaned[-1]["content"] += "\n" + msg["content"]
+    for msg in messages[-40:]:
+        role = msg.get("role", "")
+        content = safe_str(msg.get("content", "")).strip()
+        if role not in ("user", "assistant") or not content:
+            continue
+        # Merge consecutive same-role messages
+        if cleaned and cleaned[-1]["role"] == role:
+            cleaned[-1]["content"] += "\n" + content
         else:
-            cleaned.append({"role": msg["role"], "content": msg["content"][:4000]})
+            cleaned.append({"role": role, "content": content[:4000]})
 
+    # Must end with a user message
     if not cleaned or cleaned[-1]["role"] != "user":
-        return jsonify({"error": "No user message to respond to"}), 400
+        return jsonify({"error": "Conversation must end with a user message"}), 400
 
     try:
         msg = ai_client.messages.create(
@@ -2414,17 +2409,18 @@ Behaviour rules:
         )
         reply = msg.content[0].text
 
-        if messages:
-            last_user_msg = safe_str(messages[-1].get("content", ""))
-            db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                       (session["user_id"], "user", last_user_msg[:4000]))
+        # Persist to DB for history reload across sessions
+        db = get_db()
+        last_user_msg = safe_str(messages[-1].get("content", ""))
+        db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
+                   (session["user_id"], "user", last_user_msg[:4000]))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
                    (session["user_id"], "assistant", reply[:4000]))
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+# AI HISTORY         
 @app.route("/api/ai/history")
 @login_required
 def get_ai_history():
@@ -2434,7 +2430,7 @@ def get_ai_history():
         (session["user_id"],)
     ).fetchall()
     return jsonify([{"role": r["role"], "content": r["content"]} for r in rows])
-
+# AI CHAT
 @app.route("/api/ai/clear", methods=["POST"])
 @login_required
 def clear_ai_chat():
