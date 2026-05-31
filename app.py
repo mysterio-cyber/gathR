@@ -1,7 +1,9 @@
 """
-gathR v2 — Corporate Professional Network
-Adds: Search, Notifications, Real-time Comments, Analytics Dashboard,
-      Job Board with Apply, AI Chat Assistant, Direct Messaging
+gathR v3 — Corporate Professional Network
+Fixes: AI model string, error surfacing
+Adds:  Company accounts + job posting UI (+button),
+       Social sharing (WhatsApp, Instagram, LinkedIn, Twitter),
+       Network intimation / invite via social apps
 """
 
 import os, io, re, json, uuid, unicodedata
@@ -56,6 +58,7 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
+            account_type TEXT DEFAULT 'professional',
             headline TEXT DEFAULT '',
             location TEXT DEFAULT '',
             about TEXT DEFAULT '',
@@ -115,7 +118,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS job_applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            job_id INTEGER NOT NULL,
+            job_id TEXT NOT NULL,
             job_title TEXT NOT NULL,
             company TEXT NOT NULL,
             status TEXT DEFAULT 'applied',
@@ -130,7 +133,27 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS company_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            location TEXT DEFAULT 'Remote',
+            type TEXT DEFAULT 'Full-time',
+            salary TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            skills TEXT DEFAULT '[]',
+            active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(company_user_id) REFERENCES users(id)
+        );
         """)
+        # Migration: add account_type if missing
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN account_type TEXT DEFAULT 'professional'")
+            db.commit()
+        except Exception:
+            pass
         db.commit()
 
 init_db()
@@ -199,18 +222,18 @@ def add_notification(user_id, ntype, message, link=""):
     db.commit()
 
 JOBS_DB = [
-    {"id":1,"title":"Python Backend Engineer","company":"TechFlow","location":"Remote","type":"Full-time","salary":"$80-110k","skills":["python","flask","django","rest api","sql","docker"],"description":"Build scalable backend services with Python. Experience with Flask/Django required."},
-    {"id":2,"title":"Frontend Developer","company":"Pixel Studio","location":"Hyderabad","type":"Full-time","salary":"₹10-18 LPA","skills":["html","css","javascript","react","typescript","vue"],"description":"Create beautiful, responsive UIs. Strong React and TypeScript skills needed."},
-    {"id":3,"title":"AI/ML Engineer","company":"NeuralPath","location":"Bangalore","type":"Full-time","salary":"₹20-35 LPA","skills":["python","machine learning","deep learning","pytorch","nlp","tensorflow"],"description":"Design and implement ML models for production. LLM experience is a plus."},
-    {"id":4,"title":"Full Stack Developer","company":"Buildify","location":"Remote","type":"Contract","salary":"$70-90/hr","skills":["javascript","node.js","react","mongodb","docker","aws"],"description":"End-to-end feature development across our SaaS platform."},
-    {"id":5,"title":"Data Analyst","company":"Insightful Inc","location":"Mumbai","type":"Full-time","salary":"₹8-14 LPA","skills":["python","sql","tableau","excel","statistics","power bi"],"description":"Turn data into actionable business insights. Tableau proficiency required."},
-    {"id":6,"title":"DevOps Engineer","company":"CloudBase","location":"Remote","type":"Full-time","salary":"$90-130k","skills":["docker","kubernetes","aws","ci/cd","linux","terraform"],"description":"Own our cloud infrastructure and CI/CD pipelines."},
-    {"id":7,"title":"Product Manager","company":"LaunchPad","location":"Hyderabad","type":"Full-time","salary":"₹22-40 LPA","skills":["product strategy","agile","roadmapping","analytics","stakeholder management"],"description":"Lead cross-functional teams to ship impactful products."},
-    {"id":8,"title":"Cybersecurity Analyst","company":"ShieldNet","location":"Remote","type":"Full-time","salary":"$85-115k","skills":["network security","penetration testing","siem","linux","python"],"description":"Protect our systems and respond to security incidents."},
-    {"id":9,"title":"React Native Developer","company":"AppForge","location":"Remote","type":"Full-time","salary":"₹14-24 LPA","skills":["react native","javascript","ios","android","redux","typescript"],"description":"Build and maintain our cross-platform mobile apps."},
-    {"id":10,"title":"Cloud Architect","company":"SkyScale","location":"Remote","type":"Full-time","salary":"$130-165k","skills":["aws","azure","gcp","terraform","microservices","kubernetes"],"description":"Design cloud-native architectures for enterprise clients."},
-    {"id":11,"title":"UX Designer","company":"Designify","location":"Bangalore","type":"Full-time","salary":"₹12-22 LPA","skills":["figma","user research","prototyping","design systems","accessibility"],"description":"Craft intuitive user experiences from research to high-fidelity prototypes."},
-    {"id":12,"title":"Data Engineer","company":"DataPipe","location":"Remote","type":"Full-time","salary":"$95-125k","skills":["python","apache spark","kafka","airflow","sql","aws"],"description":"Build and maintain robust data pipelines at scale."},
+    {"id":"static-1","title":"Python Backend Engineer","company":"TechFlow","location":"Remote","type":"Full-time","salary":"$80-110k","skills":["python","flask","django","rest api","sql","docker"],"description":"Build scalable backend services with Python. Experience with Flask/Django required."},
+    {"id":"static-2","title":"Frontend Developer","company":"Pixel Studio","location":"Hyderabad","type":"Full-time","salary":"₹10-18 LPA","skills":["html","css","javascript","react","typescript","vue"],"description":"Create beautiful, responsive UIs. Strong React and TypeScript skills needed."},
+    {"id":"static-3","title":"AI/ML Engineer","company":"NeuralPath","location":"Bangalore","type":"Full-time","salary":"₹20-35 LPA","skills":["python","machine learning","deep learning","pytorch","nlp","tensorflow"],"description":"Design and implement ML models for production. LLM experience is a plus."},
+    {"id":"static-4","title":"Full Stack Developer","company":"Buildify","location":"Remote","type":"Contract","salary":"$70-90/hr","skills":["javascript","node.js","react","mongodb","docker","aws"],"description":"End-to-end feature development across our SaaS platform."},
+    {"id":"static-5","title":"Data Analyst","company":"Insightful Inc","location":"Mumbai","type":"Full-time","salary":"₹8-14 LPA","skills":["python","sql","tableau","excel","statistics","power bi"],"description":"Turn data into actionable business insights. Tableau proficiency required."},
+    {"id":"static-6","title":"DevOps Engineer","company":"CloudBase","location":"Remote","type":"Full-time","salary":"$90-130k","skills":["docker","kubernetes","aws","ci/cd","linux","terraform"],"description":"Own our cloud infrastructure and CI/CD pipelines."},
+    {"id":"static-7","title":"Product Manager","company":"LaunchPad","location":"Hyderabad","type":"Full-time","salary":"₹22-40 LPA","skills":["product strategy","agile","roadmapping","analytics","stakeholder management"],"description":"Lead cross-functional teams to ship impactful products."},
+    {"id":"static-8","title":"Cybersecurity Analyst","company":"ShieldNet","location":"Remote","type":"Full-time","salary":"$85-115k","skills":["network security","penetration testing","siem","linux","python"],"description":"Protect our systems and respond to security incidents."},
+    {"id":"static-9","title":"React Native Developer","company":"AppForge","location":"Remote","type":"Full-time","salary":"₹14-24 LPA","skills":["react native","javascript","ios","android","redux","typescript"],"description":"Build and maintain our cross-platform mobile apps."},
+    {"id":"static-10","title":"Cloud Architect","company":"SkyScale","location":"Remote","type":"Full-time","salary":"$130-165k","skills":["aws","azure","gcp","terraform","microservices","kubernetes"],"description":"Design cloud-native architectures for enterprise clients."},
+    {"id":"static-11","title":"UX Designer","company":"Designify","location":"Bangalore","type":"Full-time","salary":"₹12-22 LPA","skills":["figma","user research","prototyping","design systems","accessibility"],"description":"Craft intuitive user experiences from research to high-fidelity prototypes."},
+    {"id":"static-12","title":"Data Engineer","company":"DataPipe","location":"Remote","type":"Full-time","salary":"$95-125k","skills":["python","apache spark","kafka","airflow","sql","aws"],"description":"Build and maintain robust data pipelines at scale."},
 ]
 
 # ═══════════════════════════════════════════
@@ -246,7 +269,7 @@ button{cursor:pointer}
              radial-gradient(ellipse 60% 50% at 85% 90%,rgba(124,58,237,.1) 0%,transparent 65%),var(--ink);position:relative}
 .auth-wordmark{position:absolute;top:28px;left:36px;font-weight:900;font-size:1.5rem;letter-spacing:-.04em}
 .auth-wordmark span{color:var(--sky)}
-.auth-card{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:44px 40px;width:100%;max-width:430px;box-shadow:var(--shadow);position:relative;z-index:1}
+.auth-card{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:44px 40px;width:100%;max-width:460px;box-shadow:var(--shadow);position:relative;z-index:1}
 .auth-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(26,108,255,.1);border:1px solid rgba(26,108,255,.2);border-radius:999px;padding:5px 12px;font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.06em;margin-bottom:18px}
 .auth-badge::before{content:'';width:6px;height:6px;background:var(--sky);border-radius:50%}
 .auth-h1{font-size:2rem;font-weight:900;letter-spacing:-.05em;line-height:1.1;margin-bottom:6px}
@@ -257,12 +280,19 @@ button{cursor:pointer}
 .auth-tab.active{background:var(--ink2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
-.field input{width:100%;background:var(--ink3);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.9rem;outline:none;transition:all .2s}
-.field input:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(26,108,255,.1)}
+.field input,.field select{width:100%;background:var(--ink3);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.9rem;outline:none;transition:all .2s}
+.field input:focus,.field select:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(26,108,255,.1)}
+.field select option{background:var(--ink2)}
 .auth-btn{width:100%;padding:13px;background:var(--sky);border:none;border-radius:11px;color:#fff;font-size:.95rem;font-weight:800;transition:all .2s}
 .auth-btn:hover{background:var(--sky2);transform:translateY(-1px)}
 .auth-err{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.2);color:#fb7185;padding:10px 14px;border-radius:8px;font-size:.83rem;margin-bottom:14px;display:none}
 .auth-err.show{display:block}
+.account-type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}
+.atype-btn{padding:12px 8px;border:2px solid var(--line);border-radius:12px;background:transparent;color:var(--muted);font-size:.82rem;font-weight:800;transition:all .2s;text-align:center}
+.atype-btn:hover{border-color:var(--line2);color:var(--text)}
+.atype-btn.active{border-color:var(--sky);background:rgba(26,108,255,.08);color:var(--sky)}
+.atype-icon{font-size:1.4rem;display:block;margin-bottom:4px}
+.company-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:var(--amber);padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:800}
 
 /* APP SHELL */
 .app{display:none;min-height:100vh}
@@ -291,13 +321,13 @@ button{cursor:pointer}
 .tnav:hover{background:var(--ink3);color:var(--text)}
 .tnav.active{background:rgba(26,108,255,.12);color:var(--sky)}
 .nav-badge{position:absolute;top:4px;right:4px;width:8px;height:8px;background:var(--rose);border-radius:50%;border:2px solid var(--ink)}
-
 .topbar-user{display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 9px;border-radius:9px;transition:background .2s;margin-left:4px}
 .topbar-user:hover{background:var(--ink3)}
 .avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--violet));display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden}
 .avatar img{width:100%;height:100%;object-fit:cover}
 .avatar.lg{width:72px;height:72px;font-size:1.5rem}
 .avatar.xl{width:100px;height:100px;font-size:2rem;border:3px solid var(--ink)}
+.avatar.company-av{background:linear-gradient(135deg,var(--amber),#f97316)}
 .uname{font-size:.82rem;font-weight:700}
 .logout-btn{background:none;border:none;color:var(--muted);font-size:.78rem;cursor:pointer;padding:6px 10px;border-radius:8px;font-weight:600;transition:all .2s}
 .logout-btn:hover{background:rgba(244,63,94,.08);color:var(--rose)}
@@ -305,7 +335,6 @@ button{cursor:pointer}
 /* LAYOUT */
 .main-layout{display:grid;grid-template-columns:230px 1fr 260px;gap:16px;max-width:1140px;margin:0 auto;padding:20px 14px}
 @media(max-width:1024px){.main-layout{grid-template-columns:0 1fr 0;padding:12px 10px}.sidebar-left,.sidebar-right{display:none}}
-
 .sidebar-left,.sidebar-right{display:flex;flex-direction:column;gap:12px}
 .s-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
 .s-card-hero{padding:22px 18px 16px;background:linear-gradient(150deg,rgba(26,108,255,.1) 0%,rgba(124,58,237,.07) 100%);text-align:center;border-bottom:1px solid var(--line)}
@@ -365,6 +394,24 @@ button{cursor:pointer}
 .p-action{padding:6px 12px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:.77rem;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:5px}
 .p-action:hover{background:var(--ink3);color:var(--text)}
 .p-action.liked{color:var(--sky);background:rgba(26,108,255,.08)}
+
+/* SHARE PANEL */
+.share-panel{display:none;padding:10px 14px;border-top:1px solid var(--line);background:var(--ink3)}
+.share-panel.show{display:block}
+.share-title{font-size:.72rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px}
+.share-btns{display:flex;gap:7px;flex-wrap:wrap}
+.share-btn{display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;border:1px solid var(--line2);background:transparent;color:var(--text);font-size:.77rem;font-weight:700;cursor:pointer;transition:all .2s}
+.share-btn:hover{transform:translateY(-1px)}
+.share-btn.wa{border-color:rgba(37,211,102,.3);color:#25d366}
+.share-btn.wa:hover{background:rgba(37,211,102,.08)}
+.share-btn.ig{border-color:rgba(228,64,95,.3);color:#e4405f}
+.share-btn.ig:hover{background:rgba(228,64,95,.08)}
+.share-btn.li{border-color:rgba(0,119,181,.3);color:#0077b5}
+.share-btn.li:hover{background:rgba(0,119,181,.08)}
+.share-btn.tw{border-color:rgba(29,161,242,.3);color:#1da1f2}
+.share-btn.tw:hover{background:rgba(29,161,242,.08)}
+.share-btn.cp{border-color:var(--line2);color:var(--muted)}
+.share-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
 
 /* COMMENTS */
 .comments-area{border-top:1px solid var(--line);background:var(--ink3)}
@@ -429,7 +476,7 @@ button{cursor:pointer}
 .job-fill{height:100%;background:linear-gradient(90deg,var(--sky),var(--violet));border-radius:4px;transition:width 1.2s cubic-bezier(.16,1,.3,1)}
 .job-pct{font-family:'Geist Mono',monospace;font-size:.79rem;font-weight:500;color:var(--sky);min-width:36px;text-align:right}
 
-/* ANALYTICS DASHBOARD */
+/* ANALYTICS */
 .analytics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
 .metric-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px 16px;text-align:center}
 .metric-val{font-family:'Geist Mono',monospace;font-size:2rem;font-weight:500;letter-spacing:-.05em}
@@ -459,8 +506,8 @@ button{cursor:pointer}
 /* JOB BOARD */
 .job-board-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px;transition:border-color .2s}
 .job-board-card:hover{border-color:var(--line2)}
+.job-board-card.company-posted{border-left:3px solid var(--amber)}
 .jb-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
-.jb-title-wrap{}
 .jb-title{font-size:1rem;font-weight:900;letter-spacing:-.03em}
 .jb-company{font-size:.8rem;color:var(--muted);margin-top:3px;font-weight:600}
 .jb-meta{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
@@ -480,6 +527,10 @@ button{cursor:pointer}
 .jf-btn{padding:6px 14px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.76rem;font-weight:700;transition:all .2s;cursor:pointer}
 .jf-btn:hover{border-color:var(--sky);color:var(--sky)}
 .jf-btn.active{background:rgba(26,108,255,.1);border-color:var(--sky);color:var(--sky)}
+/* Post Job FAB */
+.post-job-fab{position:fixed;bottom:28px;right:28px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#f97316);border:none;color:#fff;font-size:1.5rem;font-weight:900;box-shadow:0 4px 20px rgba(245,158,11,.4);cursor:pointer;transition:all .25s;z-index:90;display:none;align-items:center;justify-content:center}
+.post-job-fab:hover{transform:scale(1.1) translateY(-2px);box-shadow:0 6px 28px rgba(245,158,11,.5)}
+.post-job-fab.show{display:flex}
 
 /* NOTIFICATIONS */
 .notif-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
@@ -514,7 +565,6 @@ button{cursor:pointer}
 .dm-convo-time{font-size:.68rem;color:var(--dim);font-family:'Geist Mono',monospace;flex-shrink:0}
 .dm-chat{display:flex;flex-direction:column;height:100%}
 .dm-chat-header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-shrink:0}
-.dm-chat-header .avatar{width:36px;height:36px;font-size:.78rem}
 .dm-chat-name{font-size:.9rem;font-weight:800;letter-spacing:-.02em}
 .dm-chat-status{font-size:.74rem;color:var(--mint)}
 .dm-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
@@ -533,6 +583,24 @@ button{cursor:pointer}
 .dm-empty p{font-size:.85rem;font-weight:600}
 .new-dm-btn{margin:12px;padding:9px;width:calc(100% - 24px);border:1px dashed var(--line2);background:transparent;border-radius:9px;color:var(--muted);font-size:.78rem;font-weight:700;transition:all .2s}
 .new-dm-btn:hover{border-color:var(--sky);color:var(--sky)}
+
+/* NETWORK INVITE PANEL */
+.invite-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:20px;margin-bottom:14px}
+.invite-title{font-size:.88rem;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
+.invite-sub{font-size:.78rem;color:var(--muted);margin-bottom:14px;line-height:1.5}
+.invite-btns{display:flex;gap:8px;flex-wrap:wrap}
+.invite-btn{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:1px solid var(--line2);background:transparent;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s}
+.invite-btn:hover{transform:translateY(-1px)}
+.invite-btn.wa{border-color:rgba(37,211,102,.35);color:#25d366}
+.invite-btn.wa:hover{background:rgba(37,211,102,.08)}
+.invite-btn.ig{border-color:rgba(228,64,95,.35);color:#e4405f}
+.invite-btn.ig:hover{background:rgba(228,64,95,.08)}
+.invite-btn.li{border-color:rgba(0,119,181,.35);color:#0077b5}
+.invite-btn.li:hover{background:rgba(0,119,181,.08)}
+.invite-btn.tw{border-color:rgba(29,161,242,.35);color:#1da1f2}
+.invite-btn.tw:hover{background:rgba(29,161,242,.08)}
+.invite-btn.cp{border-color:var(--line2);color:var(--muted)}
+.invite-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
 
 /* AI CHAT */
 .ai-chat-container{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 96px)}
@@ -573,7 +641,6 @@ button{cursor:pointer}
 .people-role{color:var(--muted);font-size:.74rem;margin:4px 0 12px;font-weight:500}
 .connect-btn{width:100%;padding:7px;border-radius:8px;border:1px solid rgba(26,108,255,.35);background:transparent;color:var(--sky);font-size:.77rem;font-weight:800;transition:all .2s}
 .connect-btn:hover{background:var(--sky);color:#fff;border-color:var(--sky)}
-.connect-btn:disabled{background:rgba(0,196,140,.1);color:var(--mint);border-color:rgba(0,196,140,.3);cursor:not-allowed}
 .suggest-item{display:flex;align-items:center;gap:10px;padding:9px 13px;transition:background .15s;border-bottom:1px solid var(--line)}
 .suggest-item:last-child{border-bottom:none}
 .suggest-item:hover{background:var(--ink3)}
@@ -592,11 +659,14 @@ button{cursor:pointer}
 .modal-close:hover{background:rgba(244,63,94,.1);color:var(--rose)}
 .mfield{margin-bottom:12px}
 .mfield label{display:block;font-size:.69rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.mfield input,.mfield textarea{width:100%;background:var(--ink3);border:1px solid var(--line);border-radius:9px;padding:9px 12px;color:var(--text);font-size:.84rem;outline:none;transition:all .2s}
-.mfield input:focus,.mfield textarea:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(26,108,255,.07)}
+.mfield input,.mfield textarea,.mfield select{width:100%;background:var(--ink3);border:1px solid var(--line);border-radius:9px;padding:9px 12px;color:var(--text);font-size:.84rem;outline:none;transition:all .2s}
+.mfield select option{background:var(--ink2)}
+.mfield input:focus,.mfield textarea:focus,.mfield select:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(26,108,255,.07)}
 .mfield textarea{resize:vertical;min-height:78px;line-height:1.6}
 .modal-save{width:100%;padding:11px;background:var(--sky);border:none;border-radius:10px;color:#fff;font-size:.88rem;font-weight:800;margin-top:6px;transition:all .2s}
 .modal-save:hover{background:var(--sky2);transform:translateY(-1px)}
+.modal-save.amber{background:var(--amber)}
+.modal-save.amber:hover{background:#d97706}
 
 /* MISC */
 .tag{display:inline-block;padding:3px 9px;border-radius:6px;font-size:.7rem;font-weight:800}
@@ -622,6 +692,9 @@ button{cursor:pointer}
 .avatar-upload-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .avatar-overlay{position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;color:#fff;opacity:0;transition:opacity .2s}
 .avatar-upload-wrap:hover .avatar-overlay{opacity:1}
+
+/* AI error highlight */
+.ai-bubble.error{border-color:rgba(244,63,94,.3);color:var(--rose)}
 </style>
 </head>
 <body>
@@ -632,22 +705,34 @@ button{cursor:pointer}
   <div class="auth-card">
     <div class="auth-badge">Professional Network</div>
     <h1 class="auth-h1">Where careers <em>connect</em>.</h1>
-    <p class="auth-sub">Join gathR — the network built for ambitious professionals.</p>
+    <p class="auth-sub">Join gathR — the network built for ambitious professionals and growing companies.</p>
     <div class="auth-tabs">
       <button class="auth-tab active" onclick="showAuthTab('login')">Sign in</button>
       <button class="auth-tab" onclick="showAuthTab('register')">Create account</button>
     </div>
     <div class="auth-err" id="authErr"></div>
+
+    <!-- LOGIN -->
     <div id="loginForm">
       <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@company.com"/></div>
       <div class="field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••"/></div>
       <button class="auth-btn" onclick="doLogin()">Sign in →</button>
     </div>
+
+    <!-- REGISTER -->
     <div id="registerForm" style="display:none">
-      <div class="field"><label>Full name</label><input type="text" id="regName" placeholder="Jane Smith"/></div>
+      <div class="account-type-toggle">
+        <button class="atype-btn active" id="atype-pro" onclick="selectAccountType('professional')">
+          <span class="atype-icon">👤</span>Professional
+        </button>
+        <button class="atype-btn" id="atype-co" onclick="selectAccountType('company')">
+          <span class="atype-icon">🏢</span>Company / Recruiter
+        </button>
+      </div>
+      <div class="field"><label id="nameLabel">Full name</label><input type="text" id="regName" placeholder="Jane Smith"/></div>
       <div class="field"><label>Email</label><input type="email" id="regEmail" placeholder="you@company.com"/></div>
       <div class="field"><label>Password</label><input type="password" id="regPass" placeholder="Min 6 characters"/></div>
-      <div class="field"><label>Job title / headline</label><input type="text" id="regHeadline" placeholder="Software Engineer at TechCorp"/></div>
+      <div class="field"><label id="headlineLabel">Job title / headline</label><input type="text" id="regHeadline" placeholder="Software Engineer at TechCorp"/></div>
       <button class="auth-btn" onclick="doRegister()">Create account →</button>
     </div>
   </div>
@@ -667,12 +752,12 @@ button{cursor:pointer}
     <div class="topbar-nav">
       <button class="tnav active" onclick="showPage('feed')">Feed</button>
       <button class="tnav" onclick="showPage('profile')">Profile</button>
-      <button class="tnav" onclick="showPage('resume')">Resume</button>
+      <button class="tnav" id="resumeNavBtn" onclick="showPage('resume')">Resume</button>
       <button class="tnav" onclick="showPage('analytics')">Analytics</button>
       <button class="tnav" onclick="showPage('jobs')">Jobs</button>
       <button class="tnav" onclick="showPage('messages')">Messages<span class="nav-badge" id="msgBadge" style="display:none"></span></button>
       <button class="tnav" onclick="showPage('notifications')">
-        <span>Alerts</span><span class="nav-badge" id="notifBadge" style="display:none"></span>
+        Alerts<span class="nav-badge" id="notifBadge" style="display:none"></span>
       </button>
       <button class="tnav" onclick="showPage('ai')">✦ AI</button>
       <button class="tnav" onclick="showPage('network')">Network</button>
@@ -683,6 +768,9 @@ button{cursor:pointer}
     </div>
     <button class="logout-btn" onclick="doLogout()">Sign out</button>
   </div>
+
+  <!-- Company post-job FAB (only visible for company accounts) -->
+  <button class="post-job-fab" id="postJobFab" onclick="openPostJobModal()" title="Post a new job">＋</button>
 
   <!-- FEED PAGE -->
   <div class="page show" id="page-feed">
@@ -755,6 +843,7 @@ button{cursor:pointer}
               <button class="profile-edit-btn" onclick="openEditProfile()">✏ Edit profile</button>
             </div>
             <div class="profile-name" id="profName"></div>
+            <div id="profTypeBadge" style="margin:4px 0"></div>
             <div class="profile-headline" id="profHeadline"></div>
             <div class="profile-location" id="profLocation"></div>
             <div class="profile-about" id="profAbout"></div>
@@ -812,7 +901,10 @@ button{cursor:pointer}
         <div style="margin-bottom:16px">
           <div class="section-header">
             <div class="section-title">Job Board</div>
-            <div id="appliedCount" style="font-size:.8rem;color:var(--muted);font-weight:700"></div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div id="appliedCount" style="font-size:.8rem;color:var(--muted);font-weight:700"></div>
+              <button id="postJobBtn" onclick="openPostJobModal()" style="display:none;padding:7px 14px;background:linear-gradient(135deg,var(--amber),#f97316);border:none;border-radius:9px;color:#fff;font-size:.78rem;font-weight:800;cursor:pointer;transition:all .2s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">＋ Post a Job</button>
+            </div>
           </div>
           <div class="job-filters" id="jobFilters">
             <button class="jf-btn active" onclick="filterJobs('all', this)">All jobs</button>
@@ -881,7 +973,7 @@ button{cursor:pointer}
           </div>
         </div>
         <div class="ai-suggestions" id="aiSuggestions">
-          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How do I improve my LinkedIn?</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How do I improve my profile?</button>
           <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Tips for a career change?</button>
           <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How to ace a tech interview?</button>
           <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Write a cold outreach message</button>
@@ -899,6 +991,33 @@ button{cursor:pointer}
     <div class="main-layout">
       <div></div>
       <div>
+        <!-- Invite via social apps panel -->
+        <div class="invite-panel">
+          <div class="invite-title">📣 Invite your network</div>
+          <div class="invite-sub">Grow your professional circle — invite colleagues via your favourite apps</div>
+          <div class="invite-btns">
+            <button class="invite-btn wa" onclick="inviteVia('whatsapp')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              WhatsApp
+            </button>
+            <button class="invite-btn ig" onclick="inviteVia('instagram')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+              Instagram
+            </button>
+            <button class="invite-btn li" onclick="inviteVia('linkedin')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              LinkedIn
+            </button>
+            <button class="invite-btn tw" onclick="inviteVia('twitter')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              X / Twitter
+            </button>
+            <button class="invite-btn cp" onclick="copyInviteLink()">
+              🔗 Copy link
+            </button>
+          </div>
+        </div>
+
         <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:22px">
           <div class="section-title" style="margin-bottom:16px">Grow your network</div>
           <div id="networkList"><div class="loading-wrap"><div class="spinner"></div><p>Loading...</p></div></div>
@@ -931,6 +1050,46 @@ button{cursor:pointer}
   </div>
 </div>
 
+<!-- POST JOB MODAL (company accounts) -->
+<div class="modal-bg" id="postJobModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('postJobModal')">✕</button>
+    <h2>📋 Post a Job Opening</h2>
+    <div class="mfield"><label>Job Title</label><input id="pj_title" placeholder="e.g. Senior React Developer"/></div>
+    <div class="mfield"><label>Company Name</label><input id="pj_company" placeholder="Your company name"/></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="mfield">
+        <label>Location</label>
+        <select id="pj_location">
+          <option>Remote</option>
+          <option>Hyderabad</option>
+          <option>Bangalore</option>
+          <option>Mumbai</option>
+          <option>Delhi</option>
+          <option>Chennai</option>
+          <option>Pune</option>
+          <option>On-site</option>
+          <option>Hybrid</option>
+        </select>
+      </div>
+      <div class="mfield">
+        <label>Job Type</label>
+        <select id="pj_type">
+          <option>Full-time</option>
+          <option>Part-time</option>
+          <option>Contract</option>
+          <option>Internship</option>
+          <option>Freelance</option>
+        </select>
+      </div>
+    </div>
+    <div class="mfield"><label>Salary / CTC Range</label><input id="pj_salary" placeholder="e.g. ₹12-20 LPA or $80-100k"/></div>
+    <div class="mfield"><label>Job Description</label><textarea id="pj_desc" placeholder="Describe the role, responsibilities, what you're building..."></textarea></div>
+    <div class="mfield"><label>Required Skills (comma separated)</label><input id="pj_skills" placeholder="Python, React, SQL, Docker..."/></div>
+    <button class="modal-save amber" onclick="submitJobPosting()">Post Job Opening →</button>
+  </div>
+</div>
+
 <!-- NEW DM MODAL -->
 <div class="modal-bg" id="newDMModal">
   <div class="modal">
@@ -951,6 +1110,8 @@ let appliedJobs = new Set();
 let currentDMUser = null;
 let allUsers = [];
 let allPosts = [];
+let allCompanyJobs = [];
+let selectedAccountType = 'professional';
 
 window.addEventListener('DOMContentLoaded', checkSession);
 
@@ -961,13 +1122,31 @@ async function checkSession() {
   } catch(e) {}
 }
 
-// AUTH
+// ── AUTH ──────────────────────────────────
+function selectAccountType(type) {
+  selectedAccountType = type;
+  document.getElementById('atype-pro').classList.toggle('active', type==='professional');
+  document.getElementById('atype-co').classList.toggle('active', type==='company');
+  if (type === 'company') {
+    document.getElementById('nameLabel').textContent = 'Company Name';
+    document.getElementById('regName').placeholder = 'TechCorp Pvt Ltd';
+    document.getElementById('headlineLabel').textContent = 'Industry / Tagline';
+    document.getElementById('regHeadline').placeholder = 'Enterprise SaaS · 200+ employees';
+  } else {
+    document.getElementById('nameLabel').textContent = 'Full name';
+    document.getElementById('regName').placeholder = 'Jane Smith';
+    document.getElementById('headlineLabel').textContent = 'Job title / headline';
+    document.getElementById('regHeadline').placeholder = 'Software Engineer at TechCorp';
+  }
+}
+
 function showAuthTab(tab) {
   document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('loginForm').style.display = tab==='login'?'block':'none';
   document.getElementById('registerForm').style.display = tab==='register'?'block':'none';
   document.getElementById('authErr').classList.remove('show');
 }
+
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const pass = document.getElementById('loginPass').value;
@@ -977,6 +1156,7 @@ async function doLogin() {
   if (d.error) { showAuthErr(d.error); return; }
   ME = d.user; showApp();
 }
+
 async function doRegister() {
   const name=document.getElementById('regName').value.trim();
   const email=document.getElementById('regEmail').value.trim();
@@ -984,11 +1164,12 @@ async function doRegister() {
   const headline=document.getElementById('regHeadline').value.trim();
   if (!name||!email||!pass) { showAuthErr('Please fill all fields'); return; }
   if (pass.length<6) { showAuthErr('Password must be at least 6 chars'); return; }
-  const r = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,password:pass,headline})});
+  const r = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,password:pass,headline,account_type:selectedAccountType})});
   const d = await r.json();
   if (d.error) { showAuthErr(d.error); return; }
   ME = d.user; showApp();
 }
+
 async function doLogout() {
   await fetch('/api/logout',{method:'POST'});
   ME = null;
@@ -996,54 +1177,81 @@ async function doLogout() {
   document.getElementById('authPage').style.display='flex';
   showAuthTab('login');
 }
+
 function showAuthErr(msg) {
   const el = document.getElementById('authErr');
   el.textContent = msg; el.classList.add('show');
 }
 
-// APP INIT
+// ── APP INIT ──────────────────────────────
 async function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('appShell').classList.add('show');
   await loadUsers();
-  refreshUserUI(); loadFeed(); loadSuggestions(); loadSavedAnalysis();
-  loadNotifBadge(); loadMsgBadge(); loadAppliedJobs();
+  refreshUserUI();
+  loadFeed();
+  loadSuggestions();
+  loadSavedAnalysis();
+  loadNotifBadge();
+  loadMsgBadge();
+  loadAppliedJobs();
+
+  // company-only UI
+  const isCompany = ME && ME.account_type === 'company';
+  document.getElementById('postJobFab').classList.toggle('show', isCompany);
+  document.getElementById('postJobBtn').style.display = isCompany ? 'block' : 'none';
+  // hide Resume nav for companies
+  document.getElementById('resumeNavBtn').style.display = isCompany ? 'none' : '';
 }
+
 async function loadUsers() {
   const r = await fetch('/api/users');
   allUsers = await r.json();
 }
+
+function isCompany() { return ME && ME.account_type === 'company'; }
+
 function refreshUserUI() {
   if (!ME) return;
   const ini = ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const isco = isCompany();
   ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(id => {
     const el = document.getElementById(id); if (!el) return;
-    el.innerHTML = ME.avatar ? `<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : ini;
+    const cls = isco ? 'company-av' : '';
+    if (ME.avatar) {
+      el.innerHTML = `<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    } else {
+      el.textContent = ini;
+      el.className = el.className.replace('company-av','').trim();
+      if (isco) el.classList.add('company-av');
+    }
   });
   setText('navName', ME.name.split(' ')[0]);
   setText('sideName', ME.name);
   setText('sideHeadline', ME.headline||'');
   setText('profName', ME.name);
-  setText('profHeadline', ME.headline||'Professional on gathR');
+  const badge = document.getElementById('profTypeBadge');
+  if (badge) badge.innerHTML = isco ? '<span class="company-badge">🏢 Company Account</span>' : '';
+  setText('profHeadline', ME.headline||(isco ? 'Company on gathR' : 'Professional on gathR'));
   setText('profLocation', ME.location ? '◎ '+ME.location : '');
   setText('profAbout', ME.about||'');
   const skills = JSON.parse(ME.skills||'[]');
   renderSkillTags('profSkills', skills);
   renderSkillTags('sideSkills', skills);
 }
+
 function renderSkillTags(cid, skills) {
   const el = document.getElementById(cid); if (!el) return;
   el.innerHTML = skills.map(s=>`<span class="skill-tag">${s}</span>`).join('');
 }
 
-// PAGES
+// ── PAGES ─────────────────────────────────
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.tnav').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.s-link').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('show');
   document.querySelectorAll('.tnav').forEach(b=>{ if(b.textContent.toLowerCase().includes(page.slice(0,4))) b.classList.add('active'); });
-  document.querySelectorAll('.s-link').forEach(b=>{ if(b.textContent.toLowerCase().trim().startsWith(page.slice(0,4))) b.classList.add('active'); });
   if (page==='profile') loadProfilePosts();
   if (page==='network') loadNetwork();
   if (page==='notifications') loadNotifications();
@@ -1052,7 +1260,7 @@ function showPage(page) {
   if (page==='messages') loadDMConvos();
 }
 
-// SEARCH
+// ── SEARCH ────────────────────────────────
 async function doSearch(q) {
   const sr = document.getElementById('searchResults');
   if (!q || q.length < 2) { sr.classList.remove('show'); return; }
@@ -1062,23 +1270,24 @@ async function doSearch(q) {
   const ql = q.toLowerCase();
   const matchedUsers = users.filter(u => u.name.toLowerCase().includes(ql) || (u.headline||'').toLowerCase().includes(ql)).slice(0,3);
   const matchedPosts = posts.filter(p => p.content.toLowerCase().includes(ql)).slice(0,3);
-  if (!matchedUsers.length && !matchedPosts.length) { sr.innerHTML='<div style="padding:12px 14px;color:var(--muted);font-size:.82rem;font-weight:600">No results found</div>'; sr.classList.add('show'); return; }
+  if (!matchedUsers.length && !matchedPosts.length) {
+    sr.innerHTML='<div style="padding:12px 14px;color:var(--muted);font-size:.82rem;font-weight:600">No results found</div>';
+    sr.classList.add('show'); return;
+  }
   let html = '';
   matchedUsers.forEach(u => {
     const ini = u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     html += `<div class="sr-item" onclick="goToUser(${u.id})">
       <div class="sr-avatar">${ini}</div>
       <div class="sr-info"><div class="sr-name">${u.name}</div><div class="sr-sub">${u.headline||'gathR member'}</div></div>
-      <span class="sr-type">Person</span>
-    </div>`;
+      <span class="sr-type">Person</span></div>`;
   });
   matchedPosts.forEach(p => {
     const preview = p.content.substring(0,60)+(p.content.length>60?'...':'');
     html += `<div class="sr-item" onclick="goToPost(${p.id})">
       <div class="sr-avatar" style="background:linear-gradient(135deg,var(--mint),var(--sky))">✦</div>
       <div class="sr-info"><div class="sr-name">${p.author_name}</div><div class="sr-sub">${preview}</div></div>
-      <span class="sr-type">Post</span>
-    </div>`;
+      <span class="sr-type">Post</span></div>`;
   });
   sr.innerHTML = html; sr.classList.add('show');
 }
@@ -1086,15 +1295,14 @@ function hideSearch() { document.getElementById('searchResults').classList.remov
 function goToUser(id) { hideSearch(); showPage('network'); }
 function goToPost(id) { hideSearch(); showPage('feed'); setTimeout(()=>{ const el=document.getElementById('post-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },200); }
 
-// FEED
+// ── FEED ──────────────────────────────────
 async function loadFeed() {
   const r = await fetch('/api/posts');
   allPosts = await r.json();
   const c = document.getElementById('feedPosts');
   if (!allPosts.length) { c.innerHTML='<div class="empty-state"><span class="icon">✦</span><h3>No posts yet</h3><p>Be the first to share!</p></div>'; return; }
   c.innerHTML = allPosts.map(renderPost).join('');
-  const myPosts = allPosts.filter(p=>p.user_id===ME.id);
-  document.getElementById('statPosts').textContent = myPosts.length;
+  document.getElementById('statPosts').textContent = allPosts.filter(p=>p.user_id===ME.id).length;
 }
 
 function renderPost(p) {
@@ -1130,8 +1338,30 @@ function renderPost(p) {
     <div class="post-actions">
       <button class="p-action ${liked?'liked':''}" onclick="toggleLike(${p.id})">👍 ${likes.length>0?likes.length:''} Like</button>
       <button class="p-action" onclick="toggleComments(${p.id})">💬 Comment</button>
-      <button class="p-action" onclick="sharePost(${p.id})">↗ Share</button>
+      <button class="p-action" onclick="toggleSharePanel(${p.id})">↗ Share</button>
       ${ownerActions}
+    </div>
+    <div id="share-panel-${p.id}" class="share-panel">
+      <div class="share-title">Share this post</div>
+      <div class="share-btns">
+        <button class="share-btn wa" onclick="sharePostVia(${p.id},'whatsapp')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </button>
+        <button class="share-btn ig" onclick="sharePostVia(${p.id},'instagram')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          Instagram
+        </button>
+        <button class="share-btn li" onclick="sharePostVia(${p.id},'linkedin')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          LinkedIn
+        </button>
+        <button class="share-btn tw" onclick="sharePostVia(${p.id},'twitter')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          X / Twitter
+        </button>
+        <button class="share-btn cp" onclick="copyPostLink(${p.id})">🔗 Copy link</button>
+      </div>
     </div>
     <div id="comments-section-${p.id}" style="display:none">
       <div class="comments-area" id="comments-list-${p.id}"></div>
@@ -1143,10 +1373,59 @@ function renderPost(p) {
   </div>`;
 }
 
+// share helpers
+function toggleSharePanel(postId) {
+  const panel = document.getElementById('share-panel-'+postId);
+  panel.classList.toggle('show');
+}
+function getPostUrl(postId) { return window.location.origin + '/#post-' + postId; }
+function getPostText(postId) {
+  const el = document.getElementById('post-content-'+postId);
+  return el ? el.textContent.trim().slice(0,120) : 'Check this out on gathR!';
+}
+function sharePostVia(postId, platform) {
+  const url = encodeURIComponent(getPostUrl(postId));
+  const text = encodeURIComponent(getPostText(postId) + ' — via gathR');
+  const links = {
+    whatsapp: `https://wa.me/?text=${text}%20${url}`,
+    instagram: null, // Instagram doesn't support direct URL sharing; copy link instead
+    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${url}`,
+    twitter: `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
+  };
+  if (platform === 'instagram') {
+    navigator.clipboard.writeText(getPostUrl(postId)).then(()=>showToast('Link copied! Paste it in Instagram 📸'));
+    return;
+  }
+  if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
+}
+function copyPostLink(postId) {
+  navigator.clipboard.writeText(getPostUrl(postId)).then(()=>showToast('Link copied! 🔗'));
+}
+
+// network invite
+function inviteVia(platform) {
+  const url = encodeURIComponent(window.location.origin);
+  const text = encodeURIComponent('Join me on gathR — the professional network for ambitious careers! ' + window.location.origin);
+  const links = {
+    whatsapp: `https://wa.me/?text=${text}`,
+    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.origin)}`,
+    twitter: `https://twitter.com/intent/tweet?text=${text}`,
+    instagram: null,
+  };
+  if (platform === 'instagram') {
+    navigator.clipboard.writeText(window.location.origin).then(()=>showToast('Link copied! Open Instagram and paste in your bio or story 📸'));
+    return;
+  }
+  if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
+}
+function copyInviteLink() {
+  navigator.clipboard.writeText(window.location.origin).then(()=>showToast('Invite link copied! 🔗'));
+}
+
+// ── COMMENTS ──────────────────────────────
 async function toggleComments(postId) {
   const section = document.getElementById('comments-section-'+postId);
-  const visible = section.style.display !== 'none';
-  if (visible) { section.style.display='none'; return; }
+  if (section.style.display !== 'none') { section.style.display='none'; return; }
   section.style.display='block';
   await loadComments(postId);
   document.getElementById('comment-input-'+postId).focus();
@@ -1164,8 +1443,7 @@ async function loadComments(postId) {
         <span class="comment-author">${c.author_name}</span>
         <span class="comment-time">${timeAgo(c.created_at)}</span>
         <div class="comment-text">${escHtml(c.content)}</div>
-      </div>
-    </div>`;
+      </div></div>`;
   }).join('');
 }
 async function submitComment(postId) {
@@ -1175,15 +1453,14 @@ async function submitComment(postId) {
   const r = await fetch('/api/posts/'+postId+'/comments', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
   const d = await r.json();
   if (d.error) { showToast('Error: '+d.error, true); return; }
-  input.value = '';
-  await loadComments(postId);
-  showToast('Comment posted! ✓');
+  input.value=''; await loadComments(postId); showToast('Comment posted! ✓');
 }
 
 async function toggleLike(postId) {
   await fetch('/api/posts/'+postId+'/like', {method:'POST'});
   loadFeed();
 }
+
 async function submitPost() {
   const text = document.getElementById('postText').value.trim();
   if (!text && !attachedFile) return;
@@ -1240,10 +1517,6 @@ async function saveEdit(postId) {
 function cancelEdit(postId, orig) {
   document.getElementById('post-content-'+postId).innerHTML = escHtml(orig);
 }
-function sharePost(postId) {
-  const url = window.location.origin+'#post-'+postId;
-  navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ↗')).catch(()=>showToast('Share: '+url));
-}
 async function loadProfilePosts() {
   const r = await fetch('/api/posts?mine=1');
   const posts = await r.json();
@@ -1252,12 +1525,11 @@ async function loadProfilePosts() {
   c.innerHTML = posts.map(renderPost).join('');
 }
 
-// ANALYTICS
+// ── ANALYTICS ─────────────────────────────
 async function loadAnalytics() {
-  const [postsR, usersR, notifR] = await Promise.all([fetch('/api/posts'), fetch('/api/users'), fetch('/api/notifications')]);
+  const [postsR, usersR] = await Promise.all([fetch('/api/posts'), fetch('/api/users')]);
   const posts = await postsR.json();
   const users = await usersR.json();
-  const notifs = await notifR.json();
   const myPosts = posts.filter(p=>p.user_id===ME.id);
   const totalLikes = myPosts.reduce((s,p)=>s+JSON.parse(p.likes||'[]').length,0);
   const skills = JSON.parse(ME.skills||'[]');
@@ -1284,109 +1556,164 @@ async function loadAnalytics() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="chart-card">
         <div class="chart-title">Activity this week</div>
-        <div class="bar-chart">
-          ${barData.map((v,i)=>`<div class="bar-col"><div class="bar-fill" style="height:${(v/maxBar)*90}px"></div><div class="bar-label">${weeks[i]}</div></div>`).join('')}
-        </div>
+        <div class="bar-chart">${barData.map((v,i)=>`<div class="bar-col"><div class="bar-fill" style="height:${(v/maxBar)*90}px"></div><div class="bar-label">${weeks[i]}</div></div>`).join('')}</div>
       </div>
       <div class="chart-card">
         <div class="chart-title">Recent activity</div>
-        <ul class="activity-list">
-          ${activities.map(a=>`<li class="activity-item"><div class="activity-dot" style="background:${a.dot}"></div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></li>`).join('')}
-        </ul>
+        <ul class="activity-list">${activities.map(a=>`<li class="activity-item"><div class="activity-dot" style="background:${a.dot}"></div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></li>`).join('')}</ul>
       </div>
     </div>
     ${skillsData.length ? `<div class="chart-card">
       <div class="chart-title">Skills profile</div>
-      <div class="skills-bar-list">
-        ${skillsData.map(s=>`<div class="skill-bar-item">
-          <div class="skill-bar-header"><span class="skill-name">${s.name}</span><span class="skill-cnt">${s.count} posts</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" style="width:${(s.count/maxSkill)*100}%"></div></div>
-        </div>`).join('')}
-      </div>
-    </div>` : ''}
-  `;
+      <div class="skills-bar-list">${skillsData.map(s=>`<div class="skill-bar-item">
+        <div class="skill-bar-header"><span class="skill-name">${s.name}</span><span class="skill-cnt">${s.count} posts</span></div>
+        <div class="skill-bar-track"><div class="skill-bar-fill" style="width:${(s.count/maxSkill)*100}%"></div></div>
+      </div>`).join('')}</div></div>` : ''}`;
 }
 
-// JOBS
+// ── JOBS ──────────────────────────────────
 let currentJobFilter = 'all';
+
 async function loadAppliedJobs() {
   const r = await fetch('/api/jobs/applied');
   const applied = await r.json();
-  appliedJobs = new Set(applied.map(a=>a.job_id));
+  appliedJobs = new Set(applied.map(a=>String(a.job_id)));
 }
+
+async function loadCompanyJobs() {
+  const r = await fetch('/api/jobs/company_posted');
+  allCompanyJobs = await r.json();
+}
+
 async function loadJobs() {
-  await loadAppliedJobs();
+  await Promise.all([loadAppliedJobs(), loadCompanyJobs()]);
   renderJobs(currentJobFilter);
   const cnt = appliedJobs.size;
   document.getElementById('appliedCount').textContent = cnt ? `${cnt} applied` : '';
 }
+
 function filterJobs(filter, btn) {
   currentJobFilter = filter;
   document.querySelectorAll('.jf-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderJobs(filter);
 }
+
 function renderJobs(filter) {
-  const jobsDB = JSON.parse(document.getElementById('jobsDBData').textContent);
-  let jobs = jobsDB;
+  // merge static + company-posted jobs
+  const staticJobs = JSON.parse(document.getElementById('jobsDBData').textContent);
+  const companyPosted = allCompanyJobs.map(j => ({
+    id: 'co-'+j.id,
+    title: j.title,
+    company: j.company,
+    location: j.location,
+    type: j.type,
+    salary: j.salary,
+    description: j.description,
+    skills: JSON.parse(j.skills||'[]'),
+    isCompanyPosted: true,
+    posted_by: j.company_user_id,
+  }));
+  let jobs = [...companyPosted, ...staticJobs];
   if (filter !== 'all') {
-    jobs = jobs.filter(j=>j.location.includes(filter)||j.type.includes(filter));
+    jobs = jobs.filter(j => (j.location||'').includes(filter) || (j.type||'').includes(filter));
   }
   const container = document.getElementById('jobsList');
   if (!jobs.length) { container.innerHTML='<div class="empty-state"><span class="icon">💼</span><h3>No jobs match</h3><p>Try a different filter</p></div>'; return; }
   container.innerHTML = jobs.map(j => {
-    const applied = appliedJobs.has(j.id);
-    return `<div class="job-board-card">
+    const jid = String(j.id);
+    const applied = appliedJobs.has(jid);
+    const isOwn = isCompany() && j.isCompanyPosted && j.posted_by === ME.id;
+    return `<div class="job-board-card ${j.isCompanyPosted?'company-posted':''}">
       <div class="jb-header">
-        <div class="jb-title-wrap">
+        <div>
           <div class="jb-title">${j.title}</div>
-          <div class="jb-company">${j.company}</div>
+          <div class="jb-company">${j.company}${j.isCompanyPosted?' <span style="font-size:.66rem;color:var(--amber);font-weight:800">● New</span>':''}</div>
         </div>
+        ${isOwn ? `<button onclick="deleteCompanyJob('${j.id.toString().replace('co-','')}',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>` : ''}
       </div>
       <div class="jb-meta">
         <span class="jb-badge jb-location">📍 ${j.location}</span>
         <span class="jb-badge jb-type">${j.type}</span>
-        <span class="jb-badge jb-salary">💰 ${j.salary}</span>
+        ${j.salary?`<span class="jb-badge jb-salary">💰 ${j.salary}</span>`:''}
       </div>
       <div class="jb-desc">${j.description}</div>
-      <div class="jb-skills">${j.skills.map(s=>`<span class="jb-skill">${s}</span>`).join('')}</div>
+      <div class="jb-skills">${(j.skills||[]).map(s=>`<span class="jb-skill">${s}</span>`).join('')}</div>
       <div class="jb-footer">
-        ${applied
-          ? `<div class="applied-tag">✓ Applied</div>`
-          : `<button class="apply-btn" onclick="applyJob(${j.id},'${j.title}','${j.company}',this)">Apply now →</button>`
+        ${isOwn
+          ? '<div class="applied-tag" style="color:var(--amber)">📋 Your posting</div>'
+          : applied
+            ? '<div class="applied-tag">✓ Applied</div>'
+            : `<button class="apply-btn" onclick="applyJob('${jid}','${escAttr(j.title)}','${escAttr(j.company)}',this)">Apply now →</button>`
         }
       </div>
     </div>`;
   }).join('');
 }
+
 async function applyJob(jobId, title, company, btn) {
   btn.disabled=true; btn.textContent='Applying...';
   const r = await fetch('/api/jobs/apply', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:jobId,job_title:title,company})});
   const d = await r.json();
   if (d.error) { showToast('Error: '+d.error, true); btn.disabled=false; btn.textContent='Apply now →'; return; }
-  appliedJobs.add(jobId);
+  appliedJobs.add(String(jobId));
   showToast('Application submitted! 🎉');
   document.getElementById('appliedCount').textContent = `${appliedJobs.size} applied`;
   btn.parentElement.innerHTML = '<div class="applied-tag">✓ Applied</div>';
 }
 
-// NOTIFICATIONS
+// ── COMPANY JOB POSTING ───────────────────
+function openPostJobModal() {
+  if (!isCompany()) { showToast('Only company accounts can post jobs', true); return; }
+  document.getElementById('pj_company').value = ME.name || '';
+  openModal('postJobModal');
+}
+
+async function submitJobPosting() {
+  const title = document.getElementById('pj_title').value.trim();
+  const company = document.getElementById('pj_company').value.trim();
+  const location = document.getElementById('pj_location').value;
+  const type = document.getElementById('pj_type').value;
+  const salary = document.getElementById('pj_salary').value.trim();
+  const desc = document.getElementById('pj_desc').value.trim();
+  const skillsRaw = document.getElementById('pj_skills').value.trim();
+  if (!title || !company || !desc) { showToast('Please fill title, company & description', true); return; }
+  const skills = skillsRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const r = await fetch('/api/jobs/post', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title,company,location,type,salary,description:desc,skills:JSON.stringify(skills)})
+  });
+  const d = await r.json();
+  if (d.error) { showToast('Error: '+d.error, true); return; }
+  showToast('Job posted successfully! 🎉');
+  closeModal('postJobModal');
+  // clear form
+  ['pj_title','pj_salary','pj_desc','pj_skills'].forEach(id=>document.getElementById(id).value='');
+  await loadJobs();
+}
+
+async function deleteCompanyJob(jobId, btn) {
+  if (!confirm('Remove this job posting?')) return;
+  const r = await fetch('/api/jobs/'+jobId, {method:'DELETE'});
+  const d = await r.json();
+  if (d.error) { showToast('Error: '+d.error, true); return; }
+  showToast('Job removed'); await loadJobs();
+}
+
+// ── NOTIFICATIONS ─────────────────────────
 async function loadNotifBadge() {
   const r = await fetch('/api/notifications');
   const notifs = await r.json();
   const unread = notifs.filter(n=>!n.read).length;
-  const badge = document.getElementById('notifBadge');
-  badge.style.display = unread > 0 ? 'block' : 'none';
+  document.getElementById('notifBadge').style.display = unread > 0 ? 'block' : 'none';
 }
 async function loadNotifications() {
   const r = await fetch('/api/notifications');
   const notifs = await r.json();
   document.getElementById('notifBadge').style.display='none';
   const container = document.getElementById('notifList');
-  if (!notifs.length) {
-    container.innerHTML='<div class="empty-state"><span class="icon">🔔</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>';
-    return;
-  }
+  if (!notifs.length) { container.innerHTML='<div class="empty-state"><span class="icon">🔔</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>'; return; }
   const typeIcon = {like:'👍',comment:'💬',connection:'🤝',job:'💼',default:'🔔'};
   const typeClass = {like:'like',comment:'comment',connection:'connection',job:'job'};
   container.innerHTML = notifs.map(n=>`
@@ -1404,7 +1731,7 @@ async function markAllRead() {
   loadNotifications();
 }
 
-// MESSAGES
+// ── MESSAGES ──────────────────────────────
 async function loadMsgBadge() {
   const r = await fetch('/api/messages/unread_count');
   const d = await r.json();
@@ -1438,7 +1765,7 @@ async function openDMChat(user) {
       <div class="dm-chat-header">
         <div class="avatar" style="width:36px;height:36px;font-size:.78rem">${ini}</div>
         <div><div class="dm-chat-name">${user.name}</div><div class="dm-chat-status">● Active</div></div>
-        <button onclick="startAIChat()" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer;transition:all .2s">✦ AI help</button>
+        <button onclick="showPage('ai')" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer">✦ AI help</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
@@ -1447,7 +1774,6 @@ async function openDMChat(user) {
       </div>
     </div>`;
   loadDMMessages(user.id);
-  document.querySelectorAll('.dm-convo-item').forEach(i=>i.classList.remove('active'));
 }
 async function loadDMMessages(userId) {
   const r = await fetch('/api/messages/'+userId);
@@ -1490,9 +1816,8 @@ function openNewDM() {
   }).join('') || '<div style="color:var(--muted);font-size:.83rem;padding:10px">No other users yet</div>';
   openModal('newDMModal');
 }
-function startAIChat() { closeModal('newDMModal'); showPage('ai'); }
 
-// AI CHAT
+// ── AI CHAT ───────────────────────────────
 async function sendAIMessage() {
   const input = document.getElementById('aiInput');
   const msg = input.value.trim();
@@ -1505,33 +1830,45 @@ async function sendAIMessage() {
   appendTyping();
   aiChatHistory.push({role:'user',content:msg});
   try {
-    const r = await fetch('/api/ai/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:aiChatHistory,user:{name:ME.name,headline:ME.headline,skills:ME.skills,about:ME.about}})});
+    const r = await fetch('/api/ai/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        messages:aiChatHistory,
+        user:{name:ME.name,headline:ME.headline,skills:ME.skills,about:ME.about}
+      })
+    });
     const d = await r.json();
     removeTyping();
-    if (d.error) { appendAIMsg('assistant','Sorry, I ran into an error. Please try again.'); }
-    else {
+    if (d.error) {
+      // Show the actual error message from the server
+      appendAIMsg('assistant', '⚠️ ' + (d.error || 'Something went wrong. Please try again.'), true);
+    } else {
       appendAIMsg('assistant', d.reply);
       aiChatHistory.push({role:'assistant',content:d.reply});
     }
   } catch(e) {
     removeTyping();
-    appendAIMsg('assistant','Connection error. Please try again.');
+    appendAIMsg('assistant', '⚠️ Network error — please check your connection and try again.', true);
   }
   btn.disabled=false;
 }
+
 function sendAISuggestion(btn) {
   document.getElementById('aiInput').value = btn.textContent;
   sendAIMessage();
 }
-function appendAIMsg(role, content) {
+
+function appendAIMsg(role, content, isError=false) {
   const icon = role==='user' ? (ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)) : '✦';
   const container = document.getElementById('aiMessages');
   const el = document.createElement('div');
   el.className = `ai-msg ${role}`;
-  el.innerHTML = `<div class="ai-msg-icon">${icon}</div><div class="ai-bubble">${escHtml(content)}</div>`;
+  el.innerHTML = `<div class="ai-msg-icon">${icon}</div><div class="ai-bubble${isError?' error':''}">${escHtml(content)}</div>`;
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
+
 function appendTyping() {
   const container = document.getElementById('aiMessages');
   const el = document.createElement('div');
@@ -1554,7 +1891,7 @@ function aiKeydown(e) {
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
 }
 
-// NETWORK
+// ── NETWORK ───────────────────────────────
 async function loadSuggestions() {
   const others = allUsers.filter(u=>u.id!==ME.id).slice(0,4);
   document.getElementById('suggestions').innerHTML = others.length ?
@@ -1570,7 +1907,7 @@ async function loadNetwork() {
   document.getElementById('networkList').innerHTML = others.length ?
     `<div class="people-grid">${others.map(u=>`
     <div class="people-card">
-      <div class="avatar">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+      <div class="avatar ${u.account_type==='company'?'company-av':''}">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
       <div class="people-name">${u.name}</div>
       <div class="people-role">${u.headline||'gathR member'}</div>
       <button class="connect-btn" onclick="sendMessage(${u.id})">💬 Message</button>
@@ -1580,7 +1917,7 @@ async function loadNetwork() {
 function sendMessage(userId) { showPage('messages'); setTimeout(()=>{ const u=allUsers.find(u=>u.id===userId); if(u)openDMChat(u); },100); }
 function sendDMFrom(userId) { const u=allUsers.find(u=>u.id===userId); if(u){ showPage('messages'); setTimeout(()=>openDMChat(u),100); } }
 
-// PROFILE
+// ── PROFILE ───────────────────────────────
 function previewAvatar(input) {
   if (!input.files[0]) return;
   const reader = new FileReader();
@@ -1629,7 +1966,7 @@ async function saveProfile() {
   refreshUserUI(); closeModal('editProfileModal'); showToast('Profile updated! ✓');
 }
 
-// RESUME
+// ── RESUME ────────────────────────────────
 const rdz = document.getElementById('resumeDropZone');
 if (rdz) {
   rdz.addEventListener('dragover',e=>{e.preventDefault();rdz.classList.add('drag')});
@@ -1681,7 +2018,7 @@ function loadSavedAnalysis() {
   }
 }
 
-// UTILS
+// ── UTILS ─────────────────────────────────
 function openModal(id){document.getElementById(id).classList.add('show')}
 function closeModal(id){document.getElementById(id).classList.remove('show')}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
@@ -1704,7 +2041,6 @@ function showToast(msg, isErr=false) {
 </script>
 
 <script id="jobsDBData" type="application/json">__JOBS_DB__</script>
-
 </body>
 </html>"""
 
@@ -1718,7 +2054,7 @@ def index():
     jobs_json = json.dumps(JOBS_DB)
     return HTML.replace('__JOBS_DB__', jobs_json)
 
-# AUTH
+# ── AUTH ──────────────────────────────────
 @app.route("/api/register", methods=["POST"])
 def register():
     d = request.json
@@ -1726,13 +2062,17 @@ def register():
     email = (d.get("email") or "").strip().lower()
     password = d.get("password") or ""
     headline = (d.get("headline") or "").strip()
+    account_type = d.get("account_type", "professional")
+    if account_type not in ("professional", "company"):
+        account_type = "professional"
     if not name or not email or not password:
         return jsonify({"error": "All fields required"}), 400
     db = get_db()
     if db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
         return jsonify({"error": "Email already registered"}), 400
     hashed = generate_password_hash(password)
-    db.execute("INSERT INTO users (name,email,password,headline) VALUES (?,?,?,?)", (name, email, hashed, headline))
+    db.execute("INSERT INTO users (name,email,password,headline,account_type) VALUES (?,?,?,?,?)",
+               (name, email, hashed, headline, account_type))
     db.commit()
     user = row_to_dict(db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone())
     session["user_id"] = user["id"]
@@ -1762,19 +2102,20 @@ def me():
     if not u: return jsonify({"error": "Not authenticated"}), 401
     return jsonify(row_to_dict(u))
 
-# PROFILE
+# ── PROFILE ───────────────────────────────
 @app.route("/api/profile", methods=["PUT"])
 @login_required
 def update_profile():
     d = request.json
     db = get_db()
     db.execute("UPDATE users SET name=?,headline=?,location=?,about=?,skills=?,avatar=? WHERE id=?",
-               (d.get("name"), d.get("headline"), d.get("location"), d.get("about"), d.get("skills"), d.get("avatar",""), session["user_id"]))
+               (d.get("name"), d.get("headline"), d.get("location"), d.get("about"),
+                d.get("skills"), d.get("avatar",""), session["user_id"]))
     db.commit()
     user = row_to_dict(db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone())
     return jsonify(user)
 
-# POSTS
+# ── POSTS ─────────────────────────────────
 @app.route("/api/posts", methods=["GET"])
 @login_required
 def get_posts():
@@ -1856,7 +2197,7 @@ def like_post(post_id):
     db.commit()
     return jsonify({"ok": True})
 
-# COMMENTS
+# ── COMMENTS ──────────────────────────────
 @app.route("/api/posts/<int:post_id>/comments", methods=["GET"])
 @login_required
 def get_comments(post_id):
@@ -1881,15 +2222,15 @@ def add_comment(post_id):
         add_notification(post["user_id"], "comment", f"{user['name']} commented on your post")
     return jsonify({"ok": True})
 
-# USERS
+# ── USERS ─────────────────────────────────
 @app.route("/api/users")
 @login_required
 def get_users():
     db = get_db()
-    rows = db.execute("SELECT id,name,email,headline,location,skills FROM users").fetchall()
+    rows = db.execute("SELECT id,name,email,headline,location,skills,account_type FROM users").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# NOTIFICATIONS
+# ── NOTIFICATIONS ─────────────────────────
 @app.route("/api/notifications")
 @login_required
 def get_notifications():
@@ -1906,7 +2247,7 @@ def mark_notifications_read():
     db.commit()
     return jsonify({"ok": True})
 
-# MESSAGES
+# ── MESSAGES ──────────────────────────────
 @app.route("/api/messages", methods=["POST"])
 @login_required
 def send_message():
@@ -1957,15 +2298,16 @@ def get_convos():
 @login_required
 def unread_count():
     db = get_db()
-    row = db.execute("SELECT COUNT(*) as cnt FROM messages WHERE to_user=? AND read=0", (session["user_id"],)).fetchone()
+    row = db.execute("SELECT COUNT(*) as cnt FROM messages WHERE to_user=? AND read=0",
+                     (session["user_id"],)).fetchone()
     return jsonify({"count": row["cnt"]})
 
-# JOBS
+# ── JOBS ──────────────────────────────────
 @app.route("/api/jobs/apply", methods=["POST"])
 @login_required
 def apply_job():
     d = request.json
-    job_id = d.get("job_id")
+    job_id = str(d.get("job_id",""))
     job_title = d.get("job_title","")
     company = d.get("company","")
     db = get_db()
@@ -1986,7 +2328,56 @@ def get_applied():
                       (session["user_id"],)).fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# AI CHAT
+@app.route("/api/jobs/post", methods=["POST"])
+@login_required
+def post_job():
+    """Company accounts post new job listings."""
+    user = current_user()
+    if not user or user["account_type"] != "company":
+        return jsonify({"error": "Only company accounts can post jobs"}), 403
+    d = request.json
+    title = (d.get("title") or "").strip()
+    company = (d.get("company") or user["name"]).strip()
+    if not title or not company:
+        return jsonify({"error": "Title and company required"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO company_jobs
+        (company_user_id,title,company,location,type,salary,description,skills)
+        VALUES (?,?,?,?,?,?,?,?)""",
+        (session["user_id"], title, company,
+         d.get("location","Remote"), d.get("type","Full-time"),
+         d.get("salary",""), d.get("description",""), d.get("skills","[]")))
+    db.commit()
+    # notify all professionals
+    professionals = db.execute(
+        "SELECT id FROM users WHERE id!=? AND account_type='professional'",
+        (session["user_id"],)).fetchall()
+    for u in professionals:
+        add_notification(u["id"], "job", f"New job posted: {title} at {company}")
+    return jsonify({"ok": True})
+
+@app.route("/api/jobs/company_posted")
+@login_required
+def get_company_posted_jobs():
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM company_jobs WHERE active=1 ORDER BY created_at DESC"
+    ).fetchall()
+    return jsonify([row_to_dict(r) for r in rows])
+
+@app.route("/api/jobs/<int:job_id>", methods=["DELETE"])
+@login_required
+def delete_company_job(job_id):
+    db = get_db()
+    job = db.execute("SELECT * FROM company_jobs WHERE id=?", (job_id,)).fetchone()
+    if not job: return jsonify({"error": "Not found"}), 404
+    if job["company_user_id"] != session["user_id"]:
+        return jsonify({"error": "Unauthorized"}), 403
+    db.execute("UPDATE company_jobs SET active=0 WHERE id=?", (job_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+# ── AI CHAT ───────────────────────────────
 @app.route("/api/ai/chat", methods=["POST"])
 @login_required
 def ai_chat():
@@ -2013,10 +2404,11 @@ You help with:
 Be concise, actionable, and encouraging. Use the user's context to personalize advice.
 Keep responses under 200 words unless complex technical advice is needed."""
 
-    safe_messages = [{"role": m["role"], "content": str(m["content"])[:2000]} for m in messages[-10:]]
+    safe_messages = [{"role": m["role"], "content": str(m["content"])[:2000]}
+                     for m in messages[-10:]]
     try:
         msg = ai_client.messages.create(
-            model="claude-sonnet-4-5",
+            model="claude-sonnet-4-6",   # ← FIXED: updated model string
             max_tokens=500,
             system=system,
             messages=safe_messages
@@ -2026,12 +2418,13 @@ Keep responses under 200 words unless complex technical advice is needed."""
         if messages:
             last = messages[-1]
             db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                       (session["user_id"], last["role"], last["content"][:2000]))
+                       (session["user_id"], last["role"], str(last["content"])[:2000]))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
                    (session["user_id"], "assistant", reply[:2000]))
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
+        # Surface the real error to the client so it's visible in the UI
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/ai/clear", methods=["POST"])
@@ -2042,7 +2435,7 @@ def clear_ai_chat():
     db.commit()
     return jsonify({"ok": True})
 
-# CONNECTIONS
+# ── CONNECTIONS ───────────────────────────
 @app.route("/api/connect", methods=["POST"])
 @login_required
 def connect_user():
@@ -2051,13 +2444,14 @@ def connect_user():
     existing = db.execute("SELECT id FROM connections WHERE from_user=? AND to_user=?",
                           (session["user_id"], to)).fetchone()
     if not existing:
-        db.execute("INSERT INTO connections (from_user,to_user) VALUES (?,?)", (session["user_id"], to))
+        db.execute("INSERT INTO connections (from_user,to_user) VALUES (?,?)",
+                   (session["user_id"], to))
         db.commit()
         user = current_user()
         add_notification(to, "connection", f"{user['name']} wants to connect with you")
     return jsonify({"ok": True})
 
-# RESUME AI
+# ── RESUME AI ─────────────────────────────
 @app.route("/api/analyze_resume", methods=["POST"])
 @login_required
 def analyze_resume():
@@ -2108,8 +2502,10 @@ Return exactly this JSON structure:
 Only include jobs with match_pct >= 20, sorted descending by match_pct."""
 
     try:
-        msg = ai_client.messages.create(model="claude-sonnet-4-5", max_tokens=2500,
-                                         messages=[{"role":"user","content":prompt}])
+        msg = ai_client.messages.create(
+            model="claude-sonnet-4-6",   # ← FIXED
+            max_tokens=2500,
+            messages=[{"role":"user","content":prompt}])
         raw = msg.content[0].text.strip()
         raw = re.sub(r"^```json\s*|^```\s*|```$","", raw, flags=re.MULTILINE).strip()
         ai_data = json.loads(raw)
@@ -2122,7 +2518,8 @@ Only include jobs with match_pct >= 20, sorted descending by match_pct."""
     for m in ai_data.get("job_matches", []):
         job = next((j for j in JOBS_DB if j["title"]==m["job_title"]), None)
         if job:
-            matched.append({**job, "match_pct":m["match_pct"], "matched_skills":m.get("matched_skills",[])})
+            matched.append({**job, "match_pct":m["match_pct"],
+                            "matched_skills":m.get("matched_skills",[])})
 
     result = {
         "resume_text": resume_text[:2000],
@@ -2140,8 +2537,9 @@ Only include jobs with match_pct >= 20, sorted descending by match_pct."""
     db.commit()
     return jsonify(result)
 
-# STATIC
+# ── STATIC ────────────────────────────────
 from flask import send_from_directory
+
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
