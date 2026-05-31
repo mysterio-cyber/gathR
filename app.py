@@ -221,20 +221,7 @@ def add_notification(user_id, ntype, message, link=""):
                (user_id, ntype, message, link))
     db.commit()
 
-JOBS_DB = [
-    {"id":"static-1","title":"Python Backend Engineer","company":"TechFlow","location":"Remote","type":"Full-time","salary":"$80-110k","skills":["python","flask","django","rest api","sql","docker"],"description":"Build scalable backend services with Python. Experience with Flask/Django required."},
-    {"id":"static-2","title":"Frontend Developer","company":"Pixel Studio","location":"Hyderabad","type":"Full-time","salary":"₹10-18 LPA","skills":["html","css","javascript","react","typescript","vue"],"description":"Create beautiful, responsive UIs. Strong React and TypeScript skills needed."},
-    {"id":"static-3","title":"AI/ML Engineer","company":"NeuralPath","location":"Bangalore","type":"Full-time","salary":"₹20-35 LPA","skills":["python","machine learning","deep learning","pytorch","nlp","tensorflow"],"description":"Design and implement ML models for production. LLM experience is a plus."},
-    {"id":"static-4","title":"Full Stack Developer","company":"Buildify","location":"Remote","type":"Contract","salary":"$70-90/hr","skills":["javascript","node.js","react","mongodb","docker","aws"],"description":"End-to-end feature development across our SaaS platform."},
-    {"id":"static-5","title":"Data Analyst","company":"Insightful Inc","location":"Mumbai","type":"Full-time","salary":"₹8-14 LPA","skills":["python","sql","tableau","excel","statistics","power bi"],"description":"Turn data into actionable business insights. Tableau proficiency required."},
-    {"id":"static-6","title":"DevOps Engineer","company":"CloudBase","location":"Remote","type":"Full-time","salary":"$90-130k","skills":["docker","kubernetes","aws","ci/cd","linux","terraform"],"description":"Own our cloud infrastructure and CI/CD pipelines."},
-    {"id":"static-7","title":"Product Manager","company":"LaunchPad","location":"Hyderabad","type":"Full-time","salary":"₹22-40 LPA","skills":["product strategy","agile","roadmapping","analytics","stakeholder management"],"description":"Lead cross-functional teams to ship impactful products."},
-    {"id":"static-8","title":"Cybersecurity Analyst","company":"ShieldNet","location":"Remote","type":"Full-time","salary":"$85-115k","skills":["network security","penetration testing","siem","linux","python"],"description":"Protect our systems and respond to security incidents."},
-    {"id":"static-9","title":"React Native Developer","company":"AppForge","location":"Remote","type":"Full-time","salary":"₹14-24 LPA","skills":["react native","javascript","ios","android","redux","typescript"],"description":"Build and maintain our cross-platform mobile apps."},
-    {"id":"static-10","title":"Cloud Architect","company":"SkyScale","location":"Remote","type":"Full-time","salary":"$130-165k","skills":["aws","azure","gcp","terraform","microservices","kubernetes"],"description":"Design cloud-native architectures for enterprise clients."},
-    {"id":"static-11","title":"UX Designer","company":"Designify","location":"Bangalore","type":"Full-time","salary":"₹12-22 LPA","skills":["figma","user research","prototyping","design systems","accessibility"],"description":"Craft intuitive user experiences from research to high-fidelity prototypes."},
-    {"id":"static-12","title":"Data Engineer","company":"DataPipe","location":"Remote","type":"Full-time","salary":"$95-125k","skills":["python","apache spark","kafka","airflow","sql","aws"],"description":"Build and maintain robust data pipelines at scale."},
-]
+# No static jobs — all jobs are posted by company accounts via the UI.
 
 # ═══════════════════════════════════════════
 #  HTML TEMPLATE
@@ -1600,42 +1587,46 @@ function filterJobs(filter, btn) {
 }
 
 function renderJobs(filter) {
-  // merge static + company-posted jobs
-  const staticJobs = JSON.parse(document.getElementById('jobsDBData').textContent);
-  const companyPosted = allCompanyJobs.map(j => ({
-    id: 'co-'+j.id,
+  // Only company-posted jobs — no hardcoded demo data
+  let jobs = allCompanyJobs.map(j => ({
+    id: String(j.id),
     title: j.title,
     company: j.company,
     location: j.location,
     type: j.type,
     salary: j.salary,
     description: j.description,
-    skills: JSON.parse(j.skills||'[]'),
+    skills: JSON.parse(j.skills || '[]'),
     isCompanyPosted: true,
     posted_by: j.company_user_id,
   }));
-  let jobs = [...companyPosted, ...staticJobs];
   if (filter !== 'all') {
     jobs = jobs.filter(j => (j.location||'').includes(filter) || (j.type||'').includes(filter));
   }
   const container = document.getElementById('jobsList');
-  if (!jobs.length) { container.innerHTML='<div class="empty-state"><span class="icon">💼</span><h3>No jobs match</h3><p>Try a different filter</p></div>'; return; }
+  if (!jobs.length) {
+    container.innerHTML = `<div class="empty-state">
+      <span class="icon">💼</span>
+      <h3>No jobs posted yet</h3>
+      <p>${isCompany() ? 'Click <strong>+ Post a Job</strong> above to add your first opening.' : 'Check back soon — companies will post openings here.'}</p>
+    </div>`;
+    return;
+  }
   container.innerHTML = jobs.map(j => {
-    const jid = String(j.id);
-    const applied = appliedJobs.has(jid);
-    const isOwn = isCompany() && j.isCompanyPosted && j.posted_by === ME.id;
-    return `<div class="job-board-card ${j.isCompanyPosted?'company-posted':''}">
+    const applied = appliedJobs.has(j.id);
+    const isOwn = isCompany() && j.posted_by === ME.id;
+    return `<div class="job-board-card company-posted">
       <div class="jb-header">
         <div>
           <div class="jb-title">${j.title}</div>
-          <div class="jb-company">${j.company}${j.isCompanyPosted?' <span style="font-size:.66rem;color:var(--amber);font-weight:800">● New</span>':''}</div>
+          <div class="jb-company">${j.company}</div>
         </div>
-        ${isOwn ? `<button onclick="deleteCompanyJob('${j.id.toString().replace('co-','')}',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>` : ''}
+        ${isOwn ? `<button onclick="deleteCompanyJob('${j.id}',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>` : ''}
       </div>
       <div class="jb-meta">
         <span class="jb-badge jb-location">📍 ${j.location}</span>
         <span class="jb-badge jb-type">${j.type}</span>
-        ${j.salary?`<span class="jb-badge jb-salary">💰 ${j.salary}</span>`:''}
+        ${j.salary ? `<span class="jb-badge jb-salary">💰 ${j.salary}</span>` : ''}
       </div>
       <div class="jb-desc">${j.description}</div>
       <div class="jb-skills">${(j.skills||[]).map(s=>`<span class="jb-skill">${s}</span>`).join('')}</div>
@@ -1644,7 +1635,7 @@ function renderJobs(filter) {
           ? '<div class="applied-tag" style="color:var(--amber)">📋 Your posting</div>'
           : applied
             ? '<div class="applied-tag">✓ Applied</div>'
-            : `<button class="apply-btn" onclick="applyJob('${jid}','${escAttr(j.title)}','${escAttr(j.company)}',this)">Apply now →</button>`
+            : `<button class="apply-btn" onclick="applyJob('${j.id}','${escAttr(j.title)}','${escAttr(j.company)}',this)">Apply now →</button>`
         }
       </div>
     </div>`;
@@ -2040,7 +2031,6 @@ function showToast(msg, isErr=false) {
 }
 </script>
 
-<script id="jobsDBData" type="application/json">__JOBS_DB__</script>
 </body>
 </html>"""
 
@@ -2051,8 +2041,7 @@ function showToast(msg, isErr=false) {
 
 @app.route("/")
 def index():
-    jobs_json = json.dumps(JOBS_DB)
-    return HTML.replace('__JOBS_DB__', jobs_json)
+    return HTML
 
 # ── AUTH ──────────────────────────────────
 @app.route("/api/register", methods=["POST"])
@@ -2477,33 +2466,24 @@ def analyze_resume():
         s = unicodedata.normalize("NFKD", str(s))
         return s.encode("ascii", errors="ignore").decode("ascii")
 
-    jobs_str = "\n".join(
-        f"- {to_ascii(j['title'])} at {to_ascii(j['company'])} | {', '.join(to_ascii(sk) for sk in j['skills'])}"
-        for j in JOBS_DB
-    )
     safe_resume = to_ascii(resume_text[:3500])
     prompt = f"""Analyze this resume and return ONLY valid JSON with no markdown, no explanation.
 
 RESUME:
 {safe_resume}
 
-JOBS:
-{jobs_str}
-
 Return exactly this JSON structure:
 {{
   "skills": ["skill1","skill2"],
   "profile_score": 75,
-  "ai_summary": "2-3 sentence summary",
-  "job_matches": [{{"job_title":"exact title","match_pct":80,"matched_skills":["s1"]}}],
-  "ats": {{"overall":70,"keywords":65,"formatting":80,"readability":75,"overview":"2 sentences","suggestions":[{{"title":"Issue","detail":"Fix"}}]}},
-  "gap": {{"overview":"2 sentences","missing_skills":["s1"],"strong_skills":["s2"],"roadmap":[{{"skill":"Learn X","reason":"Because Y"}}]}}
-}}
-Only include jobs with match_pct >= 20, sorted descending by match_pct."""
+  "ai_summary": "2-3 sentence professional summary of the candidate",
+  "ats": {{"overall":70,"keywords":65,"formatting":80,"readability":75,"overview":"2 sentences on ATS readiness","suggestions":[{{"title":"Issue title","detail":"How to fix it"}}]}},
+  "gap": {{"overview":"2 sentences on skill gaps","missing_skills":["skill1"],"strong_skills":["skill2"],"roadmap":[{{"skill":"Learn X","reason":"Because Y"}}]}}
+}}"""
 
     try:
         msg = ai_client.messages.create(
-            model="claude-sonnet-4-6",   # ← FIXED
+            model="claude-sonnet-4-6",
             max_tokens=2500,
             messages=[{"role":"user","content":prompt}])
         raw = msg.content[0].text.strip()
@@ -2514,19 +2494,12 @@ Only include jobs with match_pct >= 20, sorted descending by match_pct."""
     except Exception as e:
         return jsonify({"error": f"AI error: {str(e)}"}), 500
 
-    matched = []
-    for m in ai_data.get("job_matches", []):
-        job = next((j for j in JOBS_DB if j["title"]==m["job_title"]), None)
-        if job:
-            matched.append({**job, "match_pct":m["match_pct"],
-                            "matched_skills":m.get("matched_skills",[])})
-
     result = {
         "resume_text": resume_text[:2000],
         "skills": ai_data.get("skills",[]),
         "profile_score": ai_data.get("profile_score",70),
         "ai_summary": ai_data.get("ai_summary",""),
-        "jobs": matched,
+        "jobs": [],   # job matching now comes from live company postings only
         "ats": ai_data.get("ats",{}),
         "gap": ai_data.get("gap",{}),
     }
