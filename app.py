@@ -1,6 +1,6 @@
 """
 gathR v3 — Corporate Professional Network
-Fixes: AI model string, error surfacing
+Fixes: AI model string, error surfacing, renderMarkdown JS bug
 Adds:  Company accounts + job posting UI (+button),
        Social sharing (WhatsApp, Instagram, LinkedIn, Twitter),
        Network intimation / invite via social apps
@@ -148,7 +148,6 @@ def init_db():
             FOREIGN KEY(company_user_id) REFERENCES users(id)
         );
         """)
-        # Migration: add account_type if missing
         try:
             db.execute("ALTER TABLE users ADD COLUMN account_type TEXT DEFAULT 'professional'")
             db.commit()
@@ -175,19 +174,16 @@ def current_user():
     return db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
 
 def sanitize(text):
-    """Clean text while preserving valid Unicode (Telugu, Hindi, emoji, etc.)."""
     if not text: return ""
     text = unicodedata.normalize("NFC", str(text))
     for bad, good in [("\u2013","-"),("\u2014","-"),("\u2018","'"),("\u2019","'"),
                       ("\u201c",'"'),("\u201d",'"'),("\u2022","*"),("\u00a0"," "),
                       ("\u2026","..."),("\u200b",""),("\ufeff","")]:
         text = text.replace(bad, good)
-    # strip only control characters; keep all printable Unicode
     cleaned = "".join(c if (c >= " " or c in "\n\r\t") else " " for c in text)
     return re.sub(r"[ \t]+", " ", cleaned).strip()
 
 def safe_str(val, fallback=""):
-    """Guarantee a clean UTF-8 string safe to pass to the Anthropic API."""
     try:
         s = str(val) if val is not None else fallback
         return s.encode("utf-8", errors="replace").decode("utf-8")
@@ -230,8 +226,6 @@ def add_notification(user_id, ntype, message, link=""):
     db.execute("INSERT INTO notifications (user_id,type,message,link) VALUES (?,?,?,?)",
                (user_id, ntype, message, link))
     db.commit()
-
-# No static jobs — all jobs are posted by company accounts via the UI.
 
 # ═══════════════════════════════════════════
 #  HTML TEMPLATE
@@ -524,7 +518,6 @@ button{cursor:pointer}
 .jf-btn{padding:6px 14px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.76rem;font-weight:700;transition:all .2s;cursor:pointer}
 .jf-btn:hover{border-color:var(--sky);color:var(--sky)}
 .jf-btn.active{background:rgba(26,108,255,.1);border-color:var(--sky);color:var(--sky)}
-/* Post Job FAB */
 .post-job-fab{position:fixed;bottom:28px;right:28px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#f97316);border:none;color:#fff;font-size:1.5rem;font-weight:900;box-shadow:0 4px 20px rgba(245,158,11,.4);cursor:pointer;transition:all .25s;z-index:90;display:none;align-items:center;justify-content:center}
 .post-job-fab:hover{transform:scale(1.1) translateY(-2px);box-shadow:0 6px 28px rgba(245,158,11,.5)}
 .post-job-fab.show{display:flex}
@@ -689,8 +682,6 @@ button{cursor:pointer}
 .avatar-upload-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .avatar-overlay{position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;color:#fff;opacity:0;transition:opacity .2s}
 .avatar-upload-wrap:hover .avatar-overlay{opacity:1}
-
-/* AI error highlight */
 .ai-bubble.error{border-color:rgba(244,63,94,.3);color:var(--rose)}
 </style>
 </head>
@@ -713,24 +704,24 @@ button{cursor:pointer}
     <div id="loginForm">
       <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@company.com"/></div>
       <div class="field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••"/></div>
-      <button class="auth-btn" onclick="doLogin()">Sign in →</button>
+      <button class="auth-btn" onclick="doLogin()">Sign in &rarr;</button>
     </div>
 
     <!-- REGISTER -->
     <div id="registerForm" style="display:none">
       <div class="account-type-toggle">
         <button class="atype-btn active" id="atype-pro" onclick="selectAccountType('professional')">
-          <span class="atype-icon">👤</span>Professional
+          <span class="atype-icon">&#128100;</span>Professional
         </button>
         <button class="atype-btn" id="atype-co" onclick="selectAccountType('company')">
-          <span class="atype-icon">🏢</span>Company / Recruiter
+          <span class="atype-icon">&#127970;</span>Company / Recruiter
         </button>
       </div>
       <div class="field"><label id="nameLabel">Full name</label><input type="text" id="regName" placeholder="Jane Smith"/></div>
       <div class="field"><label>Email</label><input type="email" id="regEmail" placeholder="you@company.com"/></div>
       <div class="field"><label>Password</label><input type="password" id="regPass" placeholder="Min 6 characters"/></div>
       <div class="field"><label id="headlineLabel">Job title / headline</label><input type="text" id="regHeadline" placeholder="Software Engineer at TechCorp"/></div>
-      <button class="auth-btn" onclick="doRegister()">Create account →</button>
+      <button class="auth-btn" onclick="doRegister()">Create account &rarr;</button>
     </div>
   </div>
 </div>
@@ -742,7 +733,7 @@ button{cursor:pointer}
   <div class="topbar">
     <div class="topbar-logo">gath<span>R</span></div>
     <div class="topbar-search">
-      <span class="si">⌕</span>
+      <span class="si">&#8981;</span>
       <input type="text" placeholder="Search people, posts..." id="searchInput" oninput="doSearch(this.value)" onblur="setTimeout(()=>hideSearch(),150)"/>
       <div class="search-results" id="searchResults"></div>
     </div>
@@ -753,10 +744,8 @@ button{cursor:pointer}
       <button class="tnav" onclick="showPage('analytics')">Analytics</button>
       <button class="tnav" onclick="showPage('jobs')">Jobs</button>
       <button class="tnav" onclick="showPage('messages')">Messages<span class="nav-badge" id="msgBadge" style="display:none"></span></button>
-      <button class="tnav" onclick="showPage('notifications')">
-        Alerts<span class="nav-badge" id="notifBadge" style="display:none"></span>
-      </button>
-      <button class="tnav" onclick="showPage('ai')">✦ AI</button>
+      <button class="tnav" onclick="showPage('notifications')">Alerts<span class="nav-badge" id="notifBadge" style="display:none"></span></button>
+      <button class="tnav" onclick="showPage('ai')">&#10022; AI</button>
       <button class="tnav" onclick="showPage('network')">Network</button>
     </div>
     <div class="topbar-user" onclick="showPage('profile')">
@@ -766,8 +755,8 @@ button{cursor:pointer}
     <button class="logout-btn" onclick="doLogout()">Sign out</button>
   </div>
 
-  <!-- Company post-job FAB (only visible for company accounts) -->
-  <button class="post-job-fab" id="postJobFab" onclick="openPostJobModal()" title="Post a new job">＋</button>
+  <!-- Company post-job FAB -->
+  <button class="post-job-fab" id="postJobFab" onclick="openPostJobModal()" title="Post a new job">&#43;</button>
 
   <!-- FEED PAGE -->
   <div class="page show" id="page-feed">
@@ -784,12 +773,12 @@ button{cursor:pointer}
             <div class="s-stat"><div class="n" id="statConn">0</div><div class="l">Connections</div></div>
           </div>
           <div class="s-links">
-            <div class="s-link active" onclick="showPage('feed')"><span class="icon">⌂</span>Feed</div>
-            <div class="s-link" onclick="showPage('profile')"><span class="icon">◎</span>Profile</div>
-            <div class="s-link" onclick="showPage('analytics')"><span class="icon">📊</span>Analytics</div>
-            <div class="s-link" onclick="showPage('jobs')"><span class="icon">💼</span>Job Board</div>
-            <div class="s-link" onclick="showPage('ai')"><span class="icon">✦</span>AI Assistant</div>
-            <div class="s-link" onclick="showPage('messages')"><span class="icon">💬</span>Messages</div>
+            <div class="s-link active" onclick="showPage('feed')"><span class="icon">&#8962;</span>Feed</div>
+            <div class="s-link" onclick="showPage('profile')"><span class="icon">&#9678;</span>Profile</div>
+            <div class="s-link" onclick="showPage('analytics')"><span class="icon">&#128202;</span>Analytics</div>
+            <div class="s-link" onclick="showPage('jobs')"><span class="icon">&#128188;</span>Job Board</div>
+            <div class="s-link" onclick="showPage('ai')"><span class="icon">&#10022;</span>AI Assistant</div>
+            <div class="s-link" onclick="showPage('messages')"><span class="icon">&#128172;</span>Messages</div>
           </div>
         </div>
       </div>
@@ -801,11 +790,11 @@ button{cursor:pointer}
           </div>
           <div class="attach-preview" id="attachPreview">
             <span id="attachName"></span>
-            <span class="rm" onclick="clearAttach()">✕</span>
+            <span class="rm" onclick="clearAttach()">&#10005;</span>
           </div>
           <div class="composer-bar">
-            <label class="cbar-btn" style="cursor:pointer">📎 Attach<input type="file" id="attachFile" style="display:none" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif" onchange="handleAttach(this)"></label>
-            <button class="cbar-btn" onclick="addEmoji()">😊 Emoji</button>
+            <label class="cbar-btn" style="cursor:pointer">&#128206; Attach<input type="file" id="attachFile" style="display:none" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif" onchange="handleAttach(this)"></label>
+            <button class="cbar-btn" onclick="addEmoji()">&#128522; Emoji</button>
             <button class="post-btn" id="postBtn" onclick="submitPost()">Post</button>
           </div>
         </div>
@@ -837,7 +826,7 @@ button{cursor:pointer}
           <div class="profile-info">
             <div class="profile-avatar-wrap">
               <div class="avatar xl" id="profAvatar"></div>
-              <button class="profile-edit-btn" onclick="openEditProfile()">✏ Edit profile</button>
+              <button class="profile-edit-btn" onclick="openEditProfile()">&#9999; Edit profile</button>
             </div>
             <div class="profile-name" id="profName"></div>
             <div id="profTypeBadge" style="margin:4px 0"></div>
@@ -865,9 +854,9 @@ button{cursor:pointer}
           </div>
           <div class="rs-upload" id="resumeDropZone">
             <input type="file" id="resumeFileInput" accept=".pdf,.txt" onchange="handleResumeUpload(this)"/>
-            <span class="icon">⬆</span>
+            <span class="icon">&#11014;</span>
             <h4>Drop your resume here</h4>
-            <p><strong>PDF or TXT</strong> — AI analyzes skills, ATS score &amp; job matches</p>
+            <p><strong>PDF or TXT</strong> &mdash; AI analyzes skills, ATS score &amp; job matches</p>
           </div>
           <div id="resumeLoading" style="display:none" class="loading-wrap">
             <div class="spinner"></div><p id="resumeLoadText">Analyzing...</p>
@@ -900,7 +889,7 @@ button{cursor:pointer}
             <div class="section-title">Job Board</div>
             <div style="display:flex;align-items:center;gap:10px">
               <div id="appliedCount" style="font-size:.8rem;color:var(--muted);font-weight:700"></div>
-              <button id="postJobBtn" onclick="openPostJobModal()" style="display:none;padding:7px 14px;background:linear-gradient(135deg,var(--amber),#f97316);border:none;border-radius:9px;color:#fff;font-size:.78rem;font-weight:800;cursor:pointer;transition:all .2s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">＋ Post a Job</button>
+              <button id="postJobBtn" onclick="openPostJobModal()" style="display:none;padding:7px 14px;background:linear-gradient(135deg,var(--amber),#f97316);border:none;border-radius:9px;color:#fff;font-size:.78rem;font-weight:800;cursor:pointer;transition:all .2s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">&#43; Post a Job</button>
             </div>
           </div>
           <div class="job-filters" id="jobFilters">
@@ -945,7 +934,7 @@ button{cursor:pointer}
           <div id="dmConvoList"></div>
         </div>
         <div id="dmChatArea">
-          <div class="dm-empty"><span class="icon">💬</span><p>Select a conversation</p></div>
+          <div class="dm-empty"><span class="icon">&#128172;</span><p>Select a conversation</p></div>
         </div>
       </div>
     </div>
@@ -956,7 +945,7 @@ button{cursor:pointer}
     <div class="main-layout" style="grid-template-columns:1fr">
       <div class="ai-chat-container">
         <div class="ai-chat-header">
-          <div class="ai-chat-icon">✦</div>
+          <div class="ai-chat-icon">&#10022;</div>
           <div>
             <div class="ai-chat-title">gathR AI Assistant</div>
             <div class="ai-chat-sub">Career coach, resume advisor &amp; networking guide</div>
@@ -965,7 +954,7 @@ button{cursor:pointer}
         </div>
         <div class="ai-messages" id="aiMessages">
           <div class="ai-msg assistant">
-            <div class="ai-msg-icon">✦</div>
+            <div class="ai-msg-icon">&#10022;</div>
             <div class="ai-bubble">Hi! I'm your gathR AI assistant. I can help you with career advice, resume tips, interview prep, networking strategies, and more. What would you like to discuss?</div>
           </div>
         </div>
@@ -988,10 +977,9 @@ button{cursor:pointer}
     <div class="main-layout">
       <div></div>
       <div>
-        <!-- Invite via social apps panel -->
         <div class="invite-panel">
-          <div class="invite-title">📣 Invite your network</div>
-          <div class="invite-sub">Grow your professional circle — invite colleagues via your favourite apps</div>
+          <div class="invite-title">&#128227; Invite your network</div>
+          <div class="invite-sub">Grow your professional circle &mdash; invite colleagues via your favourite apps</div>
           <div class="invite-btns">
             <button class="invite-btn wa" onclick="inviteVia('whatsapp')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
@@ -1009,9 +997,7 @@ button{cursor:pointer}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
               X / Twitter
             </button>
-            <button class="invite-btn cp" onclick="copyInviteLink()">
-              🔗 Copy link
-            </button>
+            <button class="invite-btn cp" onclick="copyInviteLink()">&#128279; Copy link</button>
           </div>
         </div>
 
@@ -1029,12 +1015,12 @@ button{cursor:pointer}
 <!-- EDIT PROFILE MODAL -->
 <div class="modal-bg" id="editProfileModal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('editProfileModal')">✕</button>
+    <button class="modal-close" onclick="closeModal('editProfileModal')">&#10005;</button>
     <h2>Edit Profile</h2>
     <div style="display:flex;justify-content:center;margin-bottom:18px">
       <div class="avatar-upload-wrap">
         <div class="avatar xl" id="ep_avatarPreview"></div>
-        <div class="avatar-overlay">📷</div>
+        <div class="avatar-overlay">&#128247;</div>
         <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="previewAvatar(this)" id="ep_avatarInput"/>
       </div>
     </div>
@@ -1047,11 +1033,11 @@ button{cursor:pointer}
   </div>
 </div>
 
-<!-- POST JOB MODAL (company accounts) -->
+<!-- POST JOB MODAL -->
 <div class="modal-bg" id="postJobModal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('postJobModal')">✕</button>
-    <h2>📋 Post a Job Opening</h2>
+    <button class="modal-close" onclick="closeModal('postJobModal')">&#10005;</button>
+    <h2>&#128203; Post a Job Opening</h2>
     <div class="mfield"><label>Job Title</label><input id="pj_title" placeholder="e.g. Senior React Developer"/></div>
     <div class="mfield"><label>Company Name</label><input id="pj_company" placeholder="Your company name"/></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1080,17 +1066,17 @@ button{cursor:pointer}
         </select>
       </div>
     </div>
-    <div class="mfield"><label>Salary / CTC Range</label><input id="pj_salary" placeholder="e.g. ₹12-20 LPA or $80-100k"/></div>
+    <div class="mfield"><label>Salary / CTC Range</label><input id="pj_salary" placeholder="e.g. &#8377;12-20 LPA or $80-100k"/></div>
     <div class="mfield"><label>Job Description</label><textarea id="pj_desc" placeholder="Describe the role, responsibilities, what you're building..."></textarea></div>
     <div class="mfield"><label>Required Skills (comma separated)</label><input id="pj_skills" placeholder="Python, React, SQL, Docker..."/></div>
-    <button class="modal-save amber" onclick="submitJobPosting()">Post Job Opening →</button>
+    <button class="modal-save amber" onclick="submitJobPosting()">Post Job Opening &rarr;</button>
   </div>
 </div>
 
 <!-- NEW DM MODAL -->
 <div class="modal-bg" id="newDMModal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('newDMModal')">✕</button>
+    <button class="modal-close" onclick="closeModal('newDMModal')">&#10005;</button>
     <h2>New Conversation</h2>
     <div id="dmUserList" style="display:flex;flex-direction:column;gap:4px;margin-top:4px"></div>
   </div>
@@ -1119,7 +1105,7 @@ async function checkSession() {
   } catch(e) {}
 }
 
-// ── AUTH ──────────────────────────────────
+// AUTH
 function selectAccountType(type) {
   selectedAccountType = type;
   document.getElementById('atype-pro').classList.toggle('active', type==='professional');
@@ -1180,7 +1166,7 @@ function showAuthErr(msg) {
   el.textContent = msg; el.classList.add('show');
 }
 
-// ── APP INIT ──────────────────────────────
+// APP INIT
 async function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('appShell').classList.add('show');
@@ -1192,13 +1178,10 @@ async function showApp() {
   loadNotifBadge();
   loadMsgBadge();
   loadAppliedJobs();
-
-  // company-only UI
-  const isCompany = ME && ME.account_type === 'company';
-  document.getElementById('postJobFab').classList.toggle('show', isCompany);
-  document.getElementById('postJobBtn').style.display = isCompany ? 'block' : 'none';
-  // hide Resume nav for companies
-  document.getElementById('resumeNavBtn').style.display = isCompany ? 'none' : '';
+  const isComp = ME && ME.account_type === 'company';
+  document.getElementById('postJobFab').classList.toggle('show', isComp);
+  document.getElementById('postJobBtn').style.display = isComp ? 'block' : 'none';
+  document.getElementById('resumeNavBtn').style.display = isComp ? 'none' : '';
 }
 
 async function loadUsers() {
@@ -1214,9 +1197,8 @@ function refreshUserUI() {
   const isco = isCompany();
   ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(id => {
     const el = document.getElementById(id); if (!el) return;
-    const cls = isco ? 'company-av' : '';
     if (ME.avatar) {
-      el.innerHTML = `<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+      el.innerHTML = '<img src="' + ME.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
     } else {
       el.textContent = ini;
       el.className = el.className.replace('company-av','').trim();
@@ -1228,9 +1210,9 @@ function refreshUserUI() {
   setText('sideHeadline', ME.headline||'');
   setText('profName', ME.name);
   const badge = document.getElementById('profTypeBadge');
-  if (badge) badge.innerHTML = isco ? '<span class="company-badge">🏢 Company Account</span>' : '';
+  if (badge) badge.innerHTML = isco ? '<span class="company-badge">&#127970; Company Account</span>' : '';
   setText('profHeadline', ME.headline||(isco ? 'Company on gathR' : 'Professional on gathR'));
-  setText('profLocation', ME.location ? '◎ '+ME.location : '');
+  setText('profLocation', ME.location ? '\u25CE '+ME.location : '');
   setText('profAbout', ME.about||'');
   const skills = JSON.parse(ME.skills||'[]');
   renderSkillTags('profSkills', skills);
@@ -1239,10 +1221,10 @@ function refreshUserUI() {
 
 function renderSkillTags(cid, skills) {
   const el = document.getElementById(cid); if (!el) return;
-  el.innerHTML = skills.map(s=>`<span class="skill-tag">${s}</span>`).join('');
+  el.innerHTML = skills.map(s=>'<span class="skill-tag">'+s+'</span>').join('');
 }
 
-// ── PAGES ─────────────────────────────────
+// PAGES
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.tnav').forEach(b=>b.classList.remove('active'));
@@ -1258,7 +1240,7 @@ function showPage(page) {
   if (page==='ai') loadAIChatHistory();
 }
 
-// ── SEARCH ────────────────────────────────
+// SEARCH
 async function doSearch(q) {
   const sr = document.getElementById('searchResults');
   if (!q || q.length < 2) { sr.classList.remove('show'); return; }
@@ -1275,154 +1257,135 @@ async function doSearch(q) {
   let html = '';
   matchedUsers.forEach(u => {
     const ini = u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-    html += `<div class="sr-item" onclick="goToUser(${u.id})">
-      <div class="sr-avatar">${ini}</div>
-      <div class="sr-info"><div class="sr-name">${u.name}</div><div class="sr-sub">${u.headline||'gathR member'}</div></div>
-      <span class="sr-type">Person</span></div>`;
+    html += '<div class="sr-item" onclick="goToUser('+u.id+')">' +
+      '<div class="sr-avatar">'+ini+'</div>' +
+      '<div class="sr-info"><div class="sr-name">'+u.name+'</div><div class="sr-sub">'+(u.headline||'gathR member')+'</div></div>' +
+      '<span class="sr-type">Person</span></div>';
   });
   matchedPosts.forEach(p => {
     const preview = p.content.substring(0,60)+(p.content.length>60?'...':'');
-    html += `<div class="sr-item" onclick="goToPost(${p.id})">
-      <div class="sr-avatar" style="background:linear-gradient(135deg,var(--mint),var(--sky))">✦</div>
-      <div class="sr-info"><div class="sr-name">${p.author_name}</div><div class="sr-sub">${preview}</div></div>
-      <span class="sr-type">Post</span></div>`;
+    html += '<div class="sr-item" onclick="goToPost('+p.id+')">' +
+      '<div class="sr-avatar" style="background:linear-gradient(135deg,var(--mint),var(--sky))">&#10022;</div>' +
+      '<div class="sr-info"><div class="sr-name">'+p.author_name+'</div><div class="sr-sub">'+preview+'</div></div>' +
+      '<span class="sr-type">Post</span></div>';
   });
   sr.innerHTML = html; sr.classList.add('show');
 }
 function hideSearch() { document.getElementById('searchResults').classList.remove('show'); }
 function goToUser(id) { hideSearch(); showPage('network'); }
-function goToPost(id) { hideSearch(); showPage('feed'); setTimeout(()=>{ const el=document.getElementById('post-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },200); }
+function goToPost(id) { hideSearch(); showPage('feed'); setTimeout(function(){ var el=document.getElementById('post-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },200); }
 
-// ── FEED ──────────────────────────────────
+// FEED
 async function loadFeed() {
   const r = await fetch('/api/posts');
   allPosts = await r.json();
   const c = document.getElementById('feedPosts');
-  if (!allPosts.length) { c.innerHTML='<div class="empty-state"><span class="icon">✦</span><h3>No posts yet</h3><p>Be the first to share!</p></div>'; return; }
+  if (!allPosts.length) { c.innerHTML='<div class="empty-state"><span class="icon">&#10022;</span><h3>No posts yet</h3><p>Be the first to share!</p></div>'; return; }
   c.innerHTML = allPosts.map(renderPost).join('');
   document.getElementById('statPosts').textContent = allPosts.filter(p=>p.user_id===ME.id).length;
 }
 
 function renderPost(p) {
-  const likes = JSON.parse(p.likes||'[]');
-  const liked = ME && likes.includes(ME.id);
-  const isOwner = ME && p.user_id===ME.id;
-  let fileHtml = '';
+  var likes = JSON.parse(p.likes||'[]');
+  var liked = ME && likes.includes(ME.id);
+  var isOwner = ME && p.user_id===ME.id;
+  var fileHtml = '';
   if (p.file_url) {
-    const isImg = ['png','jpg','jpeg','gif'].some(e=>p.file_name&&p.file_name.toLowerCase().endsWith(e));
+    var isImg = ['png','jpg','jpeg','gif'].some(function(e){return p.file_name&&p.file_name.toLowerCase().endsWith(e);});
     if (isImg) {
-      fileHtml = `<div class="post-file"><img src="/uploads/${p.file_url}" alt="attachment"/></div>`;
+      fileHtml = '<div class="post-file"><img src="/uploads/'+p.file_url+'" alt="attachment"/></div>';
     } else {
-      const icons = {pdf:'📄',doc:'📝',docx:'📝',txt:'📃'};
-      const ext = p.file_name ? p.file_name.split('.').pop().toLowerCase() : '';
-      fileHtml = `<div class="post-file"><div class="file-attach"><span class="ficon">${icons[ext]||'📎'}</span><div><div class="fname">${p.file_name||'Attachment'}</div><div class="ftype">${ext.toUpperCase()}</div></div><a href="/uploads/${p.file_url}" target="_blank">View →</a></div></div>`;
+      var icons = {pdf:'&#128196;',doc:'&#128221;',docx:'&#128221;',txt:'&#128211;'};
+      var ext = p.file_name ? p.file_name.split('.').pop().toLowerCase() : '';
+      fileHtml = '<div class="post-file"><div class="file-attach"><span class="ficon">'+(icons[ext]||'&#128206;')+'</span><div><div class="fname">'+(p.file_name||'Attachment')+'</div><div class="ftype">'+ext.toUpperCase()+'</div></div><a href="/uploads/'+p.file_url+'" target="_blank">View &rarr;</a></div></div>';
     }
   }
-  const ini = (p.author_name||'U').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-  const ownerActions = isOwner ? `
-    <button class="p-action" onclick="editPost(${p.id},'${escAttr(p.content)}')">✏ Edit</button>
-    <button class="p-action" style="color:var(--rose)" onclick="deletePost(${p.id})">🗑 Delete</button>` : '';
-  return `<div class="post-card" id="post-${p.id}">
-    <div class="post-header">
-      <div class="avatar">${ini}</div>
-      <div class="post-meta">
-        <div class="post-author">${p.author_name||'User'}</div>
-        <div class="post-headline">${p.author_headline||''}</div>
-        <div class="post-time">${timeAgo(p.created_at)}</div>
-      </div>
-    </div>
-    <div class="post-content" id="post-content-${p.id}">${escHtml(p.content)}</div>
-    ${fileHtml}
-    <div class="post-actions">
-      <button class="p-action ${liked?'liked':''}" onclick="toggleLike(${p.id})">👍 ${likes.length>0?likes.length:''} Like</button>
-      <button class="p-action" onclick="toggleComments(${p.id})">💬 Comment</button>
-      <button class="p-action" onclick="toggleSharePanel(${p.id})">↗ Share</button>
-      ${ownerActions}
-    </div>
-    <div id="share-panel-${p.id}" class="share-panel">
-      <div class="share-title">Share this post</div>
-      <div class="share-btns">
-        <button class="share-btn wa" onclick="sharePostVia(${p.id},'whatsapp')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          WhatsApp
-        </button>
-        <button class="share-btn ig" onclick="sharePostVia(${p.id},'instagram')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-          Instagram
-        </button>
-        <button class="share-btn li" onclick="sharePostVia(${p.id},'linkedin')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-          LinkedIn
-        </button>
-        <button class="share-btn tw" onclick="sharePostVia(${p.id},'twitter')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-          X / Twitter
-        </button>
-        <button class="share-btn cp" onclick="copyPostLink(${p.id})">🔗 Copy link</button>
-      </div>
-    </div>
-    <div id="comments-section-${p.id}" style="display:none">
-      <div class="comments-area" id="comments-list-${p.id}"></div>
-      <div class="comment-input-area">
-        <input type="text" id="comment-input-${p.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')submitComment(${p.id})"/>
-        <button onclick="submitComment(${p.id})">Post</button>
-      </div>
-    </div>
-  </div>`;
+  var ini = (p.author_name||'U').split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  var ownerActions = isOwner ?
+    '<button class="p-action" onclick="editPost('+p.id+',\''+escAttr(p.content)+'\')">&#9999; Edit</button>' +
+    '<button class="p-action" style="color:var(--rose)" onclick="deletePost('+p.id+')">&#128465; Delete</button>' : '';
+  return '<div class="post-card" id="post-'+p.id+'">' +
+    '<div class="post-header">' +
+      '<div class="avatar">'+ini+'</div>' +
+      '<div class="post-meta">' +
+        '<div class="post-author">'+(p.author_name||'User')+'</div>' +
+        '<div class="post-headline">'+(p.author_headline||'')+'</div>' +
+        '<div class="post-time">'+timeAgo(p.created_at)+'</div>' +
+      '</div></div>' +
+    '<div class="post-content" id="post-content-'+p.id+'">'+escHtml(p.content)+'</div>' +
+    fileHtml +
+    '<div class="post-actions">' +
+      '<button class="p-action '+(liked?'liked':'')+'" onclick="toggleLike('+p.id+')">&#128077; '+(likes.length>0?likes.length:'')+' Like</button>' +
+      '<button class="p-action" onclick="toggleComments('+p.id+')">&#128172; Comment</button>' +
+      '<button class="p-action" onclick="toggleSharePanel('+p.id+')">&#8599; Share</button>' +
+      ownerActions +
+    '</div>' +
+    '<div id="share-panel-'+p.id+'" class="share-panel">' +
+      '<div class="share-title">Share this post</div>' +
+      '<div class="share-btns">' +
+        '<button class="share-btn wa" onclick="sharePostVia('+p.id+',\'whatsapp\')">WhatsApp</button>' +
+        '<button class="share-btn ig" onclick="sharePostVia('+p.id+',\'instagram\')">Instagram</button>' +
+        '<button class="share-btn li" onclick="sharePostVia('+p.id+',\'linkedin\')">LinkedIn</button>' +
+        '<button class="share-btn tw" onclick="sharePostVia('+p.id+',\'twitter\')">X / Twitter</button>' +
+        '<button class="share-btn cp" onclick="copyPostLink('+p.id+')">&#128279; Copy link</button>' +
+      '</div></div>' +
+    '<div id="comments-section-'+p.id+'" style="display:none">' +
+      '<div class="comments-area" id="comments-list-'+p.id+'"></div>' +
+      '<div class="comment-input-area">' +
+        '<input type="text" id="comment-input-'+p.id+'" placeholder="Write a comment..." onkeydown="if(event.key===\'Enter\')submitComment('+p.id+')"/>' +
+        '<button onclick="submitComment('+p.id+')">Post</button>' +
+      '</div></div>' +
+  '</div>';
 }
 
-// share helpers
 function toggleSharePanel(postId) {
-  const panel = document.getElementById('share-panel-'+postId);
+  var panel = document.getElementById('share-panel-'+postId);
   panel.classList.toggle('show');
 }
 function getPostUrl(postId) { return window.location.origin + '/#post-' + postId; }
 function getPostText(postId) {
-  const el = document.getElementById('post-content-'+postId);
+  var el = document.getElementById('post-content-'+postId);
   return el ? el.textContent.trim().slice(0,120) : 'Check this out on gathR!';
 }
 function sharePostVia(postId, platform) {
-  const url = encodeURIComponent(getPostUrl(postId));
-  const text = encodeURIComponent(getPostText(postId) + ' — via gathR');
-  const links = {
-    whatsapp: `https://wa.me/?text=${text}%20${url}`,
-    instagram: null, // Instagram doesn't support direct URL sharing; copy link instead
-    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${url}`,
-    twitter: `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
+  var url = encodeURIComponent(getPostUrl(postId));
+  var text = encodeURIComponent(getPostText(postId) + ' \u2014 via gathR');
+  var links = {
+    whatsapp: 'https://wa.me/?text='+text+'%20'+url,
+    linkedin: 'https://www.linkedin.com/sharing/share-offsite/?url='+url,
+    twitter: 'https://twitter.com/intent/tweet?text='+text+'&url='+url,
   };
   if (platform === 'instagram') {
-    navigator.clipboard.writeText(getPostUrl(postId)).then(()=>showToast('Link copied! Paste it in Instagram 📸'));
+    navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied! Paste it in Instagram \uD83D\uDCF8');});
     return;
   }
   if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
 }
 function copyPostLink(postId) {
-  navigator.clipboard.writeText(getPostUrl(postId)).then(()=>showToast('Link copied! 🔗'));
+  navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied! \uD83D\uDD17');});
 }
 
-// network invite
 function inviteVia(platform) {
-  const url = encodeURIComponent(window.location.origin);
-  const text = encodeURIComponent('Join me on gathR — the professional network for ambitious careers! ' + window.location.origin);
-  const links = {
-    whatsapp: `https://wa.me/?text=${text}`,
-    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.origin)}`,
-    twitter: `https://twitter.com/intent/tweet?text=${text}`,
-    instagram: null,
+  var url = encodeURIComponent(window.location.origin);
+  var text = encodeURIComponent('Join me on gathR \u2014 the professional network for ambitious careers! ' + window.location.origin);
+  var links = {
+    whatsapp: 'https://wa.me/?text='+text,
+    linkedin: 'https://www.linkedin.com/sharing/share-offsite/?url='+url,
+    twitter: 'https://twitter.com/intent/tweet?text='+text,
   };
   if (platform === 'instagram') {
-    navigator.clipboard.writeText(window.location.origin).then(()=>showToast('Link copied! Open Instagram and paste in your bio or story 📸'));
+    navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Link copied! Open Instagram and paste in your bio or story \uD83D\uDCF8');});
     return;
   }
   if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
 }
 function copyInviteLink() {
-  navigator.clipboard.writeText(window.location.origin).then(()=>showToast('Invite link copied! 🔗'));
+  navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Invite link copied! \uD83D\uDD17');});
 }
 
-// ── COMMENTS ──────────────────────────────
+// COMMENTS
 async function toggleComments(postId) {
-  const section = document.getElementById('comments-section-'+postId);
+  var section = document.getElementById('comments-section-'+postId);
   if (section.style.display !== 'none') { section.style.display='none'; return; }
   section.style.display='block';
   await loadComments(postId);
@@ -1433,25 +1396,25 @@ async function loadComments(postId) {
   const comments = await r.json();
   const list = document.getElementById('comments-list-'+postId);
   if (!comments.length) { list.innerHTML='<div style="padding:10px 14px;color:var(--muted);font-size:.8rem;font-weight:600">No comments yet</div>'; return; }
-  list.innerHTML = comments.map(c => {
-    const ini = (c.author_name||'U').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-    return `<div class="comment-item">
-      <div class="avatar" style="width:28px;height:28px;font-size:.65rem;flex-shrink:0">${ini}</div>
-      <div class="comment-body">
-        <span class="comment-author">${c.author_name}</span>
-        <span class="comment-time">${timeAgo(c.created_at)}</span>
-        <div class="comment-text">${escHtml(c.content)}</div>
-      </div></div>`;
+  list.innerHTML = comments.map(function(c) {
+    var ini = (c.author_name||'U').split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div class="comment-item">' +
+      '<div class="avatar" style="width:28px;height:28px;font-size:.65rem;flex-shrink:0">'+ini+'</div>' +
+      '<div class="comment-body">' +
+        '<span class="comment-author">'+c.author_name+'</span>' +
+        '<span class="comment-time">'+timeAgo(c.created_at)+'</span>' +
+        '<div class="comment-text">'+escHtml(c.content)+'</div>' +
+      '</div></div>';
   }).join('');
 }
 async function submitComment(postId) {
-  const input = document.getElementById('comment-input-'+postId);
-  const val = input.value.trim();
+  var input = document.getElementById('comment-input-'+postId);
+  var val = input.value.trim();
   if (!val) return;
   const r = await fetch('/api/posts/'+postId+'/comments', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
   const d = await r.json();
   if (d.error) { showToast('Error: '+d.error, true); return; }
-  input.value=''; await loadComments(postId); showToast('Comment posted! ✓');
+  input.value=''; await loadComments(postId); showToast('Comment posted! \u2713');
 }
 
 async function toggleLike(postId) {
@@ -1472,7 +1435,7 @@ async function submitPost() {
   btn.disabled=false; btn.textContent='Post';
   if (d.error) { showToast('Error: '+d.error, true); return; }
   document.getElementById('postText').value='';
-  clearAttach(); showToast('Post shared! ✓'); loadFeed();
+  clearAttach(); showToast('Post shared! \u2713'); loadFeed();
 }
 function handleAttach(input) {
   if (!input.files[0]) return;
@@ -1486,7 +1449,7 @@ function clearAttach() {
   document.getElementById('attachPreview').classList.remove('show');
 }
 function addEmoji() {
-  const e = ['🎉','🚀','💡','🔥','✅','👏','💼','📊','⚡','🌟'];
+  var e = ['\uD83C\uDF89','\uD83D\uDE80','\uD83D\uDCA1','\uD83D\uDD25','\u2705','\uD83D\uDC4F','\uD83D\uDCBC','\uD83D\uDCCA','\u26A1','\uD83C\uDF1F'];
   document.getElementById('postText').value += ' '+e[Math.floor(Math.random()*e.length)];
 }
 async function deletePost(postId) {
@@ -1497,20 +1460,20 @@ async function deletePost(postId) {
   showToast('Post deleted'); loadFeed();
 }
 function editPost(postId, currentContent) {
-  const el = document.getElementById('post-content-'+postId);
-  el.innerHTML = `<textarea id="edit-input-${postId}" style="width:100%;background:var(--ink3);border:1px solid var(--sky);border-radius:8px;padding:10px;color:var(--text);font-size:.86rem;resize:none;outline:none;min-height:78px;line-height:1.6">${currentContent}</textarea>
-    <div style="display:flex;gap:7px;margin-top:7px">
-      <button onclick="saveEdit(${postId})" style="padding:6px 14px;background:var(--sky);border:none;border-radius:7px;color:#fff;font-size:.77rem;font-weight:800;cursor:pointer">Save</button>
-      <button onclick="cancelEdit(${postId},'${escAttr(currentContent)}')" style="padding:6px 14px;background:var(--ink3);border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:.77rem;font-weight:800;cursor:pointer">Cancel</button>
-    </div>`;
+  var el = document.getElementById('post-content-'+postId);
+  el.innerHTML = '<textarea id="edit-input-'+postId+'" style="width:100%;background:var(--ink3);border:1px solid var(--sky);border-radius:8px;padding:10px;color:var(--text);font-size:.86rem;resize:none;outline:none;min-height:78px;line-height:1.6">'+currentContent+'</textarea>' +
+    '<div style="display:flex;gap:7px;margin-top:7px">' +
+      '<button onclick="saveEdit('+postId+')" style="padding:6px 14px;background:var(--sky);border:none;border-radius:7px;color:#fff;font-size:.77rem;font-weight:800;cursor:pointer">Save</button>' +
+      '<button onclick="cancelEdit('+postId+',\''+escAttr(currentContent)+'\')" style="padding:6px 14px;background:var(--ink3);border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:.77rem;font-weight:800;cursor:pointer">Cancel</button>' +
+    '</div>';
 }
 async function saveEdit(postId) {
-  const val = document.getElementById('edit-input-'+postId).value.trim();
+  var val = document.getElementById('edit-input-'+postId).value.trim();
   if (!val) return;
   const r = await fetch('/api/posts/'+postId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
   const d = await r.json();
   if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Post updated! ✓'); loadFeed();
+  showToast('Post updated! \u2713'); loadFeed();
 }
 function cancelEdit(postId, orig) {
   document.getElementById('post-content-'+postId).innerHTML = escHtml(orig);
@@ -1519,23 +1482,23 @@ async function loadProfilePosts() {
   const r = await fetch('/api/posts?mine=1');
   const posts = await r.json();
   const c = document.getElementById('profilePosts');
-  if (!posts.length) { c.innerHTML='<div class="empty-state"><span class="icon">✦</span><h3>No posts yet</h3><p>Share your first update!</p></div>'; return; }
+  if (!posts.length) { c.innerHTML='<div class="empty-state"><span class="icon">&#10022;</span><h3>No posts yet</h3><p>Share your first update!</p></div>'; return; }
   c.innerHTML = posts.map(renderPost).join('');
 }
 
-// ── ANALYTICS ─────────────────────────────
+// ANALYTICS
 async function loadAnalytics() {
   const [postsR, usersR] = await Promise.all([fetch('/api/posts'), fetch('/api/users')]);
   const posts = await postsR.json();
   const users = await usersR.json();
-  const myPosts = posts.filter(p=>p.user_id===ME.id);
-  const totalLikes = myPosts.reduce((s,p)=>s+JSON.parse(p.likes||'[]').length,0);
+  const myPosts = posts.filter(function(p){return p.user_id===ME.id;});
+  const totalLikes = myPosts.reduce(function(s,p){return s+JSON.parse(p.likes||'[]').length;},0);
   const skills = JSON.parse(ME.skills||'[]');
   const weeks = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const barData = weeks.map(()=>Math.floor(Math.random()*90)+10);
-  const maxBar = Math.max(...barData);
-  const skillsData = skills.slice(0,6).map(s=>({name:s,count:Math.floor(Math.random()*50)+10}));
-  const maxSkill = skillsData.length ? Math.max(...skillsData.map(s=>s.count)) : 1;
+  const barData = weeks.map(function(){return Math.floor(Math.random()*90)+10;});
+  const maxBar = Math.max.apply(null, barData);
+  const skillsData = skills.slice(0,6).map(function(s){return {name:s,count:Math.floor(Math.random()*50)+10};});
+  const maxSkill = skillsData.length ? Math.max.apply(null, skillsData.map(function(s){return s.count;})) : 1;
   const activities = [
     {dot:'var(--sky)',text:'You posted an update',time:'2h ago'},
     {dot:'var(--mint)',text:'Someone liked your post',time:'4h ago'},
@@ -1543,39 +1506,32 @@ async function loadAnalytics() {
     {dot:'var(--amber)',text:'Profile viewed 3 times',time:'2d ago'},
     {dot:'var(--sky)',text:'Resume analyzed with AI',time:'3d ago'},
   ];
-  document.getElementById('analyticsContent').innerHTML = `
-    <div class="section-header"><div class="section-title">Analytics Dashboard</div><div style="font-size:.78rem;color:var(--muted);font-weight:700">Last 30 days</div></div>
-    <div class="analytics-grid">
-      <div class="metric-card"><div class="metric-val" style="color:var(--sky)">${myPosts.length}</div><div class="metric-label">Posts</div><div class="metric-delta up">↑ ${Math.floor(Math.random()*4)+1} this week</div></div>
-      <div class="metric-card"><div class="metric-val" style="color:var(--mint)">${totalLikes}</div><div class="metric-label">Total Likes</div><div class="metric-delta up">↑ ${Math.floor(Math.random()*8)+2} new</div></div>
-      <div class="metric-card"><div class="metric-val" style="color:var(--violet)">${users.length-1}</div><div class="metric-label">Network</div><div class="metric-delta up">↑ ${Math.floor(Math.random()*3)+1} this month</div></div>
-      <div class="metric-card"><div class="metric-val" style="color:var(--amber)">${skills.length}</div><div class="metric-label">Skills</div><div class="metric-delta ${skills.length>3?'up':'down'}">${skills.length>3?'↑ Strong':'↑ Add more'}</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div class="chart-card">
-        <div class="chart-title">Activity this week</div>
-        <div class="bar-chart">${barData.map((v,i)=>`<div class="bar-col"><div class="bar-fill" style="height:${(v/maxBar)*90}px"></div><div class="bar-label">${weeks[i]}</div></div>`).join('')}</div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Recent activity</div>
-        <ul class="activity-list">${activities.map(a=>`<li class="activity-item"><div class="activity-dot" style="background:${a.dot}"></div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></li>`).join('')}</ul>
-      </div>
-    </div>
-    ${skillsData.length ? `<div class="chart-card">
-      <div class="chart-title">Skills profile</div>
-      <div class="skills-bar-list">${skillsData.map(s=>`<div class="skill-bar-item">
-        <div class="skill-bar-header"><span class="skill-name">${s.name}</span><span class="skill-cnt">${s.count} posts</span></div>
-        <div class="skill-bar-track"><div class="skill-bar-fill" style="width:${(s.count/maxSkill)*100}%"></div></div>
-      </div>`).join('')}</div></div>` : ''}`;
+  document.getElementById('analyticsContent').innerHTML =
+    '<div class="section-header"><div class="section-title">Analytics Dashboard</div><div style="font-size:.78rem;color:var(--muted);font-weight:700">Last 30 days</div></div>' +
+    '<div class="analytics-grid">' +
+      '<div class="metric-card"><div class="metric-val" style="color:var(--sky)">'+myPosts.length+'</div><div class="metric-label">Posts</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*4+1)+' this week</div></div>' +
+      '<div class="metric-card"><div class="metric-val" style="color:var(--mint)">'+totalLikes+'</div><div class="metric-label">Total Likes</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*8+2)+' new</div></div>' +
+      '<div class="metric-card"><div class="metric-val" style="color:var(--violet)">'+(users.length-1)+'</div><div class="metric-label">Network</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*3+1)+' this month</div></div>' +
+      '<div class="metric-card"><div class="metric-val" style="color:var(--amber)">'+skills.length+'</div><div class="metric-label">Skills</div><div class="metric-delta '+(skills.length>3?'up':'down')+'">'+(skills.length>3?'\u2191 Strong':'\u2191 Add more')+'</div></div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">' +
+      '<div class="chart-card"><div class="chart-title">Activity this week</div>' +
+        '<div class="bar-chart">'+barData.map(function(v,i){return '<div class="bar-col"><div class="bar-fill" style="height:'+(v/maxBar*90)+'px"></div><div class="bar-label">'+weeks[i]+'</div></div>';}).join('')+'</div>' +
+      '</div>' +
+      '<div class="chart-card"><div class="chart-title">Recent activity</div>' +
+        '<ul class="activity-list">'+activities.map(function(a){return '<li class="activity-item"><div class="activity-dot" style="background:'+a.dot+'"></div><div class="activity-text">'+a.text+'</div><div class="activity-time">'+a.time+'</div></li>';}).join('')+'</ul>' +
+      '</div>' +
+    '</div>' +
+    (skillsData.length ? '<div class="chart-card"><div class="chart-title">Skills profile</div><div class="skills-bar-list">'+skillsData.map(function(s){return '<div class="skill-bar-item"><div class="skill-bar-header"><span class="skill-name">'+s.name+'</span><span class="skill-cnt">'+s.count+' posts</span></div><div class="skill-bar-track"><div class="skill-bar-fill" style="width:'+(s.count/maxSkill*100)+'%"></div></div></div>';}).join('')+'</div></div>' : '');
 }
 
-// ── JOBS ──────────────────────────────────
-let currentJobFilter = 'all';
+// JOBS
+var currentJobFilter = 'all';
 
 async function loadAppliedJobs() {
   const r = await fetch('/api/jobs/applied');
   const applied = await r.json();
-  appliedJobs = new Set(applied.map(a=>String(a.job_id)));
+  appliedJobs = new Set(applied.map(function(a){return String(a.job_id);}));
 }
 
 async function loadCompanyJobs() {
@@ -1586,85 +1542,58 @@ async function loadCompanyJobs() {
 async function loadJobs() {
   await Promise.all([loadAppliedJobs(), loadCompanyJobs()]);
   renderJobs(currentJobFilter);
-  const cnt = appliedJobs.size;
-  document.getElementById('appliedCount').textContent = cnt ? `${cnt} applied` : '';
+  var cnt = appliedJobs.size;
+  document.getElementById('appliedCount').textContent = cnt ? cnt+' applied' : '';
 }
 
 function filterJobs(filter, btn) {
   currentJobFilter = filter;
-  document.querySelectorAll('.jf-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.jf-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
   renderJobs(filter);
 }
 
 function renderJobs(filter) {
-  // Only company-posted jobs — no hardcoded demo data
-  let jobs = allCompanyJobs.map(j => ({
-    id: String(j.id),
-    title: j.title,
-    company: j.company,
-    location: j.location,
-    type: j.type,
-    salary: j.salary,
-    description: j.description,
-    skills: JSON.parse(j.skills || '[]'),
-    isCompanyPosted: true,
-    posted_by: j.company_user_id,
-  }));
+  var jobs = allCompanyJobs.map(function(j){return {
+    id: String(j.id), title: j.title, company: j.company,
+    location: j.location, type: j.type, salary: j.salary,
+    description: j.description, skills: JSON.parse(j.skills||'[]'),
+    isCompanyPosted: true, posted_by: j.company_user_id,
+  };});
   if (filter !== 'all') {
-    jobs = jobs.filter(j => (j.location||'').includes(filter) || (j.type||'').includes(filter));
+    jobs = jobs.filter(function(j){return (j.location||'').includes(filter)||(j.type||'').includes(filter);});
   }
-  const container = document.getElementById('jobsList');
+  var container = document.getElementById('jobsList');
   if (!jobs.length) {
-    container.innerHTML = `<div class="empty-state">
-      <span class="icon">💼</span>
-      <h3>No jobs posted yet</h3>
-      <p>${isCompany() ? 'Click <strong>+ Post a Job</strong> above to add your first opening.' : 'Check back soon — companies will post openings here.'}</p>
-    </div>`;
+    container.innerHTML = '<div class="empty-state"><span class="icon">&#128188;</span><h3>No jobs posted yet</h3><p>'+(isCompany()?'Click <strong>+ Post a Job</strong> above to add your first opening.':'Check back soon \u2014 companies will post openings here.')+'</p></div>';
     return;
   }
-  container.innerHTML = jobs.map(j => {
-    const applied = appliedJobs.has(j.id);
-    const isOwn = isCompany() && j.posted_by === ME.id;
-    return `<div class="job-board-card company-posted">
-      <div class="jb-header">
-        <div>
-          <div class="jb-title">${j.title}</div>
-          <div class="jb-company">${j.company}</div>
-        </div>
-        ${isOwn ? `<button onclick="deleteCompanyJob('${j.id}',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>` : ''}
-      </div>
-      <div class="jb-meta">
-        <span class="jb-badge jb-location">📍 ${j.location}</span>
-        <span class="jb-badge jb-type">${j.type}</span>
-        ${j.salary ? `<span class="jb-badge jb-salary">💰 ${j.salary}</span>` : ''}
-      </div>
-      <div class="jb-desc">${j.description}</div>
-      <div class="jb-skills">${(j.skills||[]).map(s=>`<span class="jb-skill">${s}</span>`).join('')}</div>
-      <div class="jb-footer">
-        ${isOwn
-          ? '<div class="applied-tag" style="color:var(--amber)">📋 Your posting</div>'
-          : applied
-            ? '<div class="applied-tag">✓ Applied</div>'
-            : `<button class="apply-btn" onclick="applyJob('${j.id}','${escAttr(j.title)}','${escAttr(j.company)}',this)">Apply now →</button>`
-        }
-      </div>
-    </div>`;
+  container.innerHTML = jobs.map(function(j){
+    var applied = appliedJobs.has(j.id);
+    var isOwn = isCompany() && j.posted_by === ME.id;
+    return '<div class="job-board-card company-posted">' +
+      '<div class="jb-header"><div><div class="jb-title">'+j.title+'</div><div class="jb-company">'+j.company+'</div></div>' +
+      (isOwn ? '<button onclick="deleteCompanyJob(\''+j.id+'\',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>' : '') +
+      '</div>' +
+      '<div class="jb-meta"><span class="jb-badge jb-location">&#128205; '+j.location+'</span><span class="jb-badge jb-type">'+j.type+'</span>'+(j.salary?'<span class="jb-badge jb-salary">&#128176; '+j.salary+'</span>':'')+'</div>' +
+      '<div class="jb-desc">'+j.description+'</div>' +
+      '<div class="jb-skills">'+(j.skills||[]).map(function(s){return '<span class="jb-skill">'+s+'</span>';}).join('')+'</div>' +
+      '<div class="jb-footer">'+(isOwn?'<div class="applied-tag" style="color:var(--amber)">&#128203; Your posting</div>':applied?'<div class="applied-tag">\u2713 Applied</div>':'<button class="apply-btn" onclick="applyJob(\''+j.id+'\',\''+escAttr(j.title)+'\',\''+escAttr(j.company)+'\',this)">Apply now &rarr;</button>')+'</div>' +
+    '</div>';
   }).join('');
 }
 
 async function applyJob(jobId, title, company, btn) {
   btn.disabled=true; btn.textContent='Applying...';
-  const r = await fetch('/api/jobs/apply', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:jobId,job_title:title,company})});
+  const r = await fetch('/api/jobs/apply', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:jobId,job_title:title,company:company})});
   const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); btn.disabled=false; btn.textContent='Apply now →'; return; }
+  if (d.error) { showToast('Error: '+d.error, true); btn.disabled=false; btn.textContent='Apply now \u2192'; return; }
   appliedJobs.add(String(jobId));
-  showToast('Application submitted! 🎉');
-  document.getElementById('appliedCount').textContent = `${appliedJobs.size} applied`;
-  btn.parentElement.innerHTML = '<div class="applied-tag">✓ Applied</div>';
+  showToast('Application submitted! \uD83C\uDF89');
+  document.getElementById('appliedCount').textContent = appliedJobs.size+' applied';
+  btn.parentElement.innerHTML = '<div class="applied-tag">\u2713 Applied</div>';
 }
 
-// ── COMPANY JOB POSTING ───────────────────
 function openPostJobModal() {
   if (!isCompany()) { showToast('Only company accounts can post jobs', true); return; }
   document.getElementById('pj_company').value = ME.name || '';
@@ -1672,26 +1601,25 @@ function openPostJobModal() {
 }
 
 async function submitJobPosting() {
-  const title = document.getElementById('pj_title').value.trim();
-  const company = document.getElementById('pj_company').value.trim();
-  const location = document.getElementById('pj_location').value;
-  const type = document.getElementById('pj_type').value;
-  const salary = document.getElementById('pj_salary').value.trim();
-  const desc = document.getElementById('pj_desc').value.trim();
-  const skillsRaw = document.getElementById('pj_skills').value.trim();
+  var title = document.getElementById('pj_title').value.trim();
+  var company = document.getElementById('pj_company').value.trim();
+  var location = document.getElementById('pj_location').value;
+  var type = document.getElementById('pj_type').value;
+  var salary = document.getElementById('pj_salary').value.trim();
+  var desc = document.getElementById('pj_desc').value.trim();
+  var skillsRaw = document.getElementById('pj_skills').value.trim();
   if (!title || !company || !desc) { showToast('Please fill title, company & description', true); return; }
-  const skills = skillsRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  var skills = skillsRaw.split(',').map(function(s){return s.trim();}).filter(Boolean);
   const r = await fetch('/api/jobs/post', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({title,company,location,type,salary,description:desc,skills:JSON.stringify(skills)})
+    body:JSON.stringify({title:title,company:company,location:location,type:type,salary:salary,description:desc,skills:JSON.stringify(skills)})
   });
   const d = await r.json();
   if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Job posted successfully! 🎉');
+  showToast('Job posted successfully! \uD83C\uDF89');
   closeModal('postJobModal');
-  // clear form
-  ['pj_title','pj_salary','pj_desc','pj_skills'].forEach(id=>document.getElementById(id).value='');
+  ['pj_title','pj_salary','pj_desc','pj_skills'].forEach(function(id){document.getElementById(id).value='';});
   await loadJobs();
 }
 
@@ -1703,37 +1631,34 @@ async function deleteCompanyJob(jobId, btn) {
   showToast('Job removed'); await loadJobs();
 }
 
-// ── NOTIFICATIONS ─────────────────────────
+// NOTIFICATIONS
 async function loadNotifBadge() {
   const r = await fetch('/api/notifications');
   const notifs = await r.json();
-  const unread = notifs.filter(n=>!n.read).length;
+  var unread = notifs.filter(function(n){return !n.read;}).length;
   document.getElementById('notifBadge').style.display = unread > 0 ? 'block' : 'none';
 }
 async function loadNotifications() {
   const r = await fetch('/api/notifications');
   const notifs = await r.json();
   document.getElementById('notifBadge').style.display='none';
-  const container = document.getElementById('notifList');
-  if (!notifs.length) { container.innerHTML='<div class="empty-state"><span class="icon">🔔</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>'; return; }
-  const typeIcon = {like:'👍',comment:'💬',connection:'🤝',job:'💼',default:'🔔'};
-  const typeClass = {like:'like',comment:'comment',connection:'connection',job:'job'};
-  container.innerHTML = notifs.map(n=>`
-    <div class="notif-item ${n.read?'':'unread'}">
-      <div class="notif-icon ${typeClass[n.type]||'like'}">${typeIcon[n.type]||typeIcon.default}</div>
-      <div class="notif-body">
-        <div class="notif-msg">${n.message}</div>
-        <div class="notif-time">${timeAgo(n.created_at)}</div>
-      </div>
-      ${!n.read?'<div class="unread-dot"></div>':''}
-    </div>`).join('');
+  var container = document.getElementById('notifList');
+  if (!notifs.length) { container.innerHTML='<div class="empty-state"><span class="icon">&#128276;</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>'; return; }
+  var typeIcon = {like:'\uD83D\uDC4D',comment:'\uD83D\uDCAC',connection:'\uD83E\uDD1D',job:'\uD83D\uDCBC',default:'\uD83D\uDD14'};
+  var typeClass = {like:'like',comment:'comment',connection:'connection',job:'job'};
+  container.innerHTML = notifs.map(function(n){return '' +
+    '<div class="notif-item '+(n.read?'':'unread')+'">' +
+      '<div class="notif-icon '+(typeClass[n.type]||'like')+'">'+(typeIcon[n.type]||typeIcon.default)+'</div>' +
+      '<div class="notif-body"><div class="notif-msg">'+n.message+'</div><div class="notif-time">'+timeAgo(n.created_at)+'</div></div>' +
+      (!n.read?'<div class="unread-dot"></div>':'') +
+    '</div>';}).join('');
 }
 async function markAllRead() {
   await fetch('/api/notifications/read', {method:'POST'});
   loadNotifications();
 }
 
-// ── MESSAGES ──────────────────────────────
+// MESSAGES
 async function loadMsgBadge() {
   const r = await fetch('/api/messages/unread_count');
   const d = await r.json();
@@ -1743,62 +1668,57 @@ async function loadDMConvos() {
   await loadUsers();
   const r = await fetch('/api/messages/convos');
   const convos = await r.json();
-  const container = document.getElementById('dmConvoList');
-  const others = allUsers.filter(u=>u.id!==ME.id);
+  var container = document.getElementById('dmConvoList');
+  var others = allUsers.filter(function(u){return u.id!==ME.id;});
   if (!others.length) { container.innerHTML='<div style="padding:14px;color:var(--muted);font-size:.82rem;font-weight:600">No users yet</div>'; return; }
-  container.innerHTML = others.map(u => {
-    const convo = convos.find(c=>c.other_user_id===u.id);
-    const ini = u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-    return `<div class="dm-convo-item ${currentDMUser&&currentDMUser.id===u.id?'active':''}" onclick="openDMChat(${JSON.stringify(u).replace(/"/g,'&quot;')})">
-      <div class="avatar" style="width:36px;height:36px;font-size:.78rem">${ini}</div>
-      <div class="dm-convo-info">
-        <div class="dm-convo-name">${u.name}</div>
-        <div class="dm-convo-preview">${convo?convo.last_message:'Start a conversation...'}</div>
-      </div>
-      ${convo?`<div class="dm-convo-time">${timeAgo(convo.last_time)}</div>`:''}
-    </div>`;
+  container.innerHTML = others.map(function(u) {
+    var convo = convos.find(function(c){return c.other_user_id===u.id;});
+    var ini = u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div class="dm-convo-item '+(currentDMUser&&currentDMUser.id===u.id?'active':'')+'" onclick="openDMChat('+JSON.stringify(u).replace(/"/g,'&quot;')+')">' +
+      '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
+      '<div class="dm-convo-info"><div class="dm-convo-name">'+u.name+'</div><div class="dm-convo-preview">'+(convo?convo.last_message:'Start a conversation...')+'</div></div>' +
+      (convo?'<div class="dm-convo-time">'+timeAgo(convo.last_time)+'</div>':'') +
+    '</div>';
   }).join('');
 }
 async function openDMChat(user) {
   currentDMUser = user;
-  const ini = user.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-  document.getElementById('dmChatArea').innerHTML = `
-    <div class="dm-chat">
-      <div class="dm-chat-header">
-        <div class="avatar" style="width:36px;height:36px;font-size:.78rem">${ini}</div>
-        <div><div class="dm-chat-name">${user.name}</div><div class="dm-chat-status">● Active</div></div>
-        <button onclick="showPage('ai')" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer">✦ AI help</button>
-      </div>
-      <div class="dm-messages" id="dmMessages"></div>
-      <div class="dm-input-area">
-        <input class="dm-input" type="text" id="dmInput" placeholder="Write a message..." onkeydown="if(event.key==='Enter')sendDM()"/>
-        <button class="dm-send-btn" onclick="sendDM()">Send</button>
-      </div>
-    </div>`;
+  var ini = user.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  document.getElementById('dmChatArea').innerHTML =
+    '<div class="dm-chat">' +
+      '<div class="dm-chat-header">' +
+        '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
+        '<div><div class="dm-chat-name">'+user.name+'</div><div class="dm-chat-status">\u25CF Active</div></div>' +
+        '<button onclick="showPage(\'ai\')" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer">&#10022; AI help</button>' +
+      '</div>' +
+      '<div class="dm-messages" id="dmMessages"></div>' +
+      '<div class="dm-input-area">' +
+        '<input class="dm-input" type="text" id="dmInput" placeholder="Write a message..." onkeydown="if(event.key===\'Enter\')sendDM()"/>' +
+        '<button class="dm-send-btn" onclick="sendDM()">Send</button>' +
+      '</div>' +
+    '</div>';
   loadDMMessages(user.id);
 }
 async function loadDMMessages(userId) {
   const r = await fetch('/api/messages/'+userId);
   const msgs = await r.json();
-  const container = document.getElementById('dmMessages');
+  var container = document.getElementById('dmMessages');
   if (!msgs.length) { container.innerHTML='<div style="color:var(--muted);font-size:.82rem;font-weight:600;text-align:center;margin-top:20px">No messages yet. Say hello!</div>'; return; }
-  container.innerHTML = msgs.map(m => {
-    const mine = m.from_user===ME.id;
-    const ini = mine ? (ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)) : (currentDMUser.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2));
-    return `<div class="dm-msg ${mine?'mine':''}">
-      <div class="avatar" style="width:28px;height:28px;font-size:.65rem">${ini}</div>
-      <div>
-        <div class="dm-bubble">${escHtml(m.content)}</div>
-        <div class="dm-msg-time">${timeAgo(m.created_at)}</div>
-      </div>
-    </div>`;
+  container.innerHTML = msgs.map(function(m) {
+    var mine = m.from_user===ME.id;
+    var ini = mine ? ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)
+                   : currentDMUser.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div class="dm-msg '+(mine?'mine':'')+'">' +
+      '<div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+ini+'</div>' +
+      '<div><div class="dm-bubble">'+escHtml(m.content)+'</div><div class="dm-msg-time">'+timeAgo(m.created_at)+'</div></div>' +
+    '</div>';
   }).join('');
   container.scrollTop = container.scrollHeight;
 }
 async function sendDM() {
   if (!currentDMUser) return;
-  const input = document.getElementById('dmInput');
-  const val = input.value.trim();
+  var input = document.getElementById('dmInput');
+  var val = input.value.trim();
   if (!val) return;
   input.value = '';
   const r = await fetch('/api/messages', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to_user:currentDMUser.id,content:val})});
@@ -1808,43 +1728,41 @@ async function sendDM() {
   loadDMConvos();
 }
 function openNewDM() {
-  const others = allUsers.filter(u=>u.id!==ME.id);
-  document.getElementById('dmUserList').innerHTML = others.map(u=>{
-    const ini = u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--ink3)'" onmouseout="this.style.background=''" onclick="closeModal('newDMModal');openDMChat(${JSON.stringify(u).replace(/"/g,'&quot;')})">
-      <div class="avatar" style="width:36px;height:36px;font-size:.78rem">${ini}</div>
-      <div><div style="font-size:.84rem;font-weight:800">${u.name}</div><div style="font-size:.74rem;color:var(--muted)">${u.headline||'gathR member'}</div></div>
-    </div>`;
+  var others = allUsers.filter(function(u){return u.id!==ME.id;});
+  document.getElementById('dmUserList').innerHTML = others.map(function(u){
+    var ini = u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--ink3)\'" onmouseout="this.style.background=\'\'" onclick="closeModal(\'newDMModal\');openDMChat('+JSON.stringify(u).replace(/"/g,'&quot;')+')">' +
+      '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
+      '<div><div style="font-size:.84rem;font-weight:800">'+u.name+'</div><div style="font-size:.74rem;color:var(--muted)">'+(u.headline||'gathR member')+'</div></div>' +
+    '</div>';
   }).join('') || '<div style="color:var(--muted);font-size:.83rem;padding:10px">No other users yet</div>';
   openModal('newDMModal');
 }
 
-// ── AI CHAT ───────────────────────────────
+// AI CHAT
 async function loadAIChatHistory() {
-  // Load persisted history from server so conversation survives page refresh
   try {
     const r = await fetch('/api/ai/history');
     if (!r.ok) return;
     const msgs = await r.json();
     if (!msgs.length) return;
-    const container = document.getElementById('aiMessages');
-    container.innerHTML = ''; // clear welcome message
-    msgs.forEach(m => appendAIMsg(m.role, m.content));
-    aiChatHistory = msgs.map(m => ({role: m.role, content: m.content}));
+    var container = document.getElementById('aiMessages');
+    container.innerHTML = '';
+    msgs.forEach(function(m){ appendAIMsg(m.role, m.content); });
+    aiChatHistory = msgs.map(function(m){return {role:m.role,content:m.content};});
   } catch(e) {}
 }
 
 async function sendAIMessage() {
-  const input = document.getElementById('aiInput');
-  const msg = input.value.trim();
+  var input = document.getElementById('aiInput');
+  var msg = input.value.trim();
   if (!msg) return;
   input.value='';
   document.getElementById('aiSuggestions').style.display='none';
   appendAIMsg('user', msg);
-  const btn = document.getElementById('aiSendBtn');
+  var btn = document.getElementById('aiSendBtn');
   btn.disabled=true;
   appendTyping();
-  // Add to local history immediately
   aiChatHistory.push({role:'user', content:msg});
   try {
     const r = await fetch('/api/ai/chat', {
@@ -1858,8 +1776,8 @@ async function sendAIMessage() {
     const d = await r.json();
     removeTyping();
     if (d.error) {
-      aiChatHistory.pop(); // remove the failed user message
-      appendAIMsg('assistant', '⚠️ ' + d.error, true);
+      aiChatHistory.pop();
+      appendAIMsg('assistant', '\u26A0\uFE0F ' + d.error, true);
     } else {
       appendAIMsg('assistant', d.reply);
       aiChatHistory.push({role:'assistant', content:d.reply});
@@ -1867,7 +1785,7 @@ async function sendAIMessage() {
   } catch(e) {
     removeTyping();
     aiChatHistory.pop();
-    appendAIMsg('assistant', '⚠️ Network error — please check your connection and try again.', true);
+    appendAIMsg('assistant', '\u26A0\uFE0F Network error \u2014 please check your connection and try again.', true);
   }
   btn.disabled=false;
 }
@@ -1878,13 +1796,14 @@ function sendAISuggestion(btn) {
 }
 
 function renderMarkdown(text) {
-  // Escape HTML first
-  let s = text
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // Code blocks (``` ... ```)
-  s = s.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:'Geist Mono',monospace;font-size:.78rem;overflow-x:auto;margin:8px 0;white-space:pre-wrap">$1</pre>');
+  var s = text
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+  // Code blocks
+  s = s.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:monospace;font-size:.78rem;overflow-x:auto;margin:8px 0;white-space:pre-wrap">$1</pre>');
   // Inline code
-  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:'Geist Mono',monospace;font-size:.82em">$1</code>');
+  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:.82em">$1</code>');
   // Bold
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   // Italic
@@ -1893,96 +1812,96 @@ function renderMarkdown(text) {
   s = s.replace(/^### (.+)$/gm, '<div style="font-size:.9rem;font-weight:900;color:var(--text);margin:12px 0 5px;letter-spacing:-.02em">$1</div>');
   s = s.replace(/^## (.+)$/gm, '<div style="font-size:.95rem;font-weight:900;color:var(--text);margin:14px 0 6px;letter-spacing:-.02em">$1</div>');
   s = s.replace(/^# (.+)$/gm, '<div style="font-size:1rem;font-weight:900;color:var(--sky);margin:14px 0 6px;letter-spacing:-.03em">$1</div>');
-  // Bullet lists (- item or * item)
-  s = s.replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;margin-top:2px">•</span><span>$1</span></div>');
+  // Bullet lists
+  s = s.replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;margin-top:2px">&#8226;</span><span>$1</span></div>');
   // Numbered lists
-  s = s.replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;font-family:'Geist Mono',monospace;font-size:.82em;margin-top:2px">$1.</span><span>$2</span></div>');
+  s = s.replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;font-family:monospace;font-size:.82em;margin-top:2px">$1.</span><span>$2</span></div>');
   // Horizontal rule
   s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--line);margin:10px 0">');
   // Line breaks
-  s = s.replace(/
-
-/g, '<div style="height:8px"></div>');
-  s = s.replace(/
-/g, '<br>');
+  s = s.replace(/\n\n/g, '<div style="height:8px"></div>');
+  s = s.replace(/\n/g, '<br>');
   return s;
 }
 
-function appendAIMsg(role, content, isError=false) {
-  const icon = role==='user' ? (ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)) : '✦';
-  const container = document.getElementById('aiMessages');
-  const el = document.createElement('div');
-  el.className = `ai-msg ${role}`;
-  const rendered = isError ? escHtml(content) : (role === 'assistant' ? renderMarkdown(content) : escHtml(content));
-  el.innerHTML = `<div class="ai-msg-icon">${icon}</div><div class="ai-bubble${isError?' error':''}">${rendered}</div>`;
+function appendAIMsg(role, content, isError) {
+  var icon = role==='user' ? ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2) : '&#10022;';
+  var container = document.getElementById('aiMessages');
+  var el = document.createElement('div');
+  el.className = 'ai-msg ' + role;
+  var rendered = isError ? escHtml(content) : (role === 'assistant' ? renderMarkdown(content) : escHtml(content));
+  el.innerHTML = '<div class="ai-msg-icon">'+icon+'</div><div class="ai-bubble'+(isError?' error':'')+'">'+rendered+'</div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
 
 function appendTyping() {
-  const container = document.getElementById('aiMessages');
-  const el = document.createElement('div');
+  var container = document.getElementById('aiMessages');
+  var el = document.createElement('div');
   el.className='ai-msg assistant'; el.id='typing-indicator';
-  el.innerHTML='<div class="ai-msg-icon">✦</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+  el.innerHTML='<div class="ai-msg-icon">&#10022;</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
 function removeTyping() {
-  const el = document.getElementById('typing-indicator');
+  var el = document.getElementById('typing-indicator');
   if (el) el.remove();
 }
 async function clearAIChat() {
   await fetch('/api/ai/clear', {method:'POST'});
   aiChatHistory = [];
-  document.getElementById('aiMessages').innerHTML = `<div class="ai-msg assistant"><div class="ai-msg-icon">✦</div><div class="ai-bubble">Chat cleared! I'm ready to help — ask me anything about your career, interviews, resume, or any topic.</div></div>`;
+  document.getElementById('aiMessages').innerHTML = '<div class="ai-msg assistant"><div class="ai-msg-icon">&#10022;</div><div class="ai-bubble">Chat cleared! I\'m ready to help \u2014 ask me anything about your career, interviews, resume, or any topic.</div></div>';
   document.getElementById('aiSuggestions').style.display = 'flex';
 }
 function aiKeydown(e) {
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
 }
 
-// ── NETWORK ───────────────────────────────
+// NETWORK
 async function loadSuggestions() {
-  const others = allUsers.filter(u=>u.id!==ME.id).slice(0,4);
+  var others = allUsers.filter(function(u){return u.id!==ME.id;}).slice(0,4);
   document.getElementById('suggestions').innerHTML = others.length ?
-    others.map(u=>`<div class="suggest-item">
-      <div class="avatar" style="width:28px;height:28px;font-size:.65rem">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
-      <div class="suggest-info"><div class="suggest-name">${u.name}</div><div class="suggest-role">${u.headline||'gathR member'}</div></div>
-      <button class="s-connect-btn" onclick="sendDMFrom(${u.id})">💬</button>
-    </div>`).join('') :
+    others.map(function(u){
+      return '<div class="suggest-item">' +
+        '<div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div>' +
+        '<div class="suggest-info"><div class="suggest-name">'+u.name+'</div><div class="suggest-role">'+(u.headline||'gathR member')+'</div></div>' +
+        '<button class="s-connect-btn" onclick="sendDMFrom('+u.id+')">&#128172;</button>' +
+      '</div>';
+    }).join('') :
     '<div style="padding:14px;color:var(--muted);font-size:.82rem;font-weight:600">No suggestions yet</div>';
 }
 async function loadNetwork() {
-  const others = allUsers.filter(u=>u.id!==ME.id);
+  var others = allUsers.filter(function(u){return u.id!==ME.id;});
   document.getElementById('networkList').innerHTML = others.length ?
-    `<div class="people-grid">${others.map(u=>`
-    <div class="people-card">
-      <div class="avatar ${u.account_type==='company'?'company-av':''}">${u.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
-      <div class="people-name">${u.name}</div>
-      <div class="people-role">${u.headline||'gathR member'}</div>
-      <button class="connect-btn" onclick="sendMessage(${u.id})">💬 Message</button>
-    </div>`).join('')}</div>` :
-    '<div class="empty-state"><span class="icon">⊕</span><h3>No members yet</h3><p>Invite your colleagues!</p></div>';
+    '<div class="people-grid">'+others.map(function(u){
+      return '<div class="people-card">' +
+        '<div class="avatar '+(u.account_type==='company'?'company-av':'')+'">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div>' +
+        '<div class="people-name">'+u.name+'</div>' +
+        '<div class="people-role">'+(u.headline||'gathR member')+'</div>' +
+        '<button class="connect-btn" onclick="sendMessage('+u.id+')">&#128172; Message</button>' +
+      '</div>';
+    }).join('')+'</div>' :
+    '<div class="empty-state"><span class="icon">&#8853;</span><h3>No members yet</h3><p>Invite your colleagues!</p></div>';
 }
-function sendMessage(userId) { showPage('messages'); setTimeout(()=>{ const u=allUsers.find(u=>u.id===userId); if(u)openDMChat(u); },100); }
-function sendDMFrom(userId) { const u=allUsers.find(u=>u.id===userId); if(u){ showPage('messages'); setTimeout(()=>openDMChat(u),100); } }
+function sendMessage(userId) { showPage('messages'); setTimeout(function(){ var u=allUsers.find(function(u){return u.id===userId;}); if(u)openDMChat(u); },100); }
+function sendDMFrom(userId) { var u=allUsers.find(function(u){return u.id===userId;}); if(u){ showPage('messages'); setTimeout(function(){openDMChat(u);},100); } }
 
-// ── PROFILE ───────────────────────────────
+// PROFILE
 function previewAvatar(input) {
   if (!input.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = e => {
+  var reader = new FileReader();
+  reader.onload = function(e) {
     avatarBase64 = e.target.result;
-    const prev = document.getElementById('ep_avatarPreview');
-    prev.innerHTML = `<img src="${avatarBase64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    var prev = document.getElementById('ep_avatarPreview');
+    prev.innerHTML = '<img src="'+avatarBase64+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
     updateAllAvatars(avatarBase64);
   };
   reader.readAsDataURL(input.files[0]);
 }
 function updateAllAvatars(src) {
-  ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el) el.innerHTML=`<img src="${src}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.innerHTML='<img src="'+src+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
   });
 }
 function openEditProfile() {
@@ -1993,14 +1912,14 @@ function openEditProfile() {
   document.getElementById('ep_location').value = ME.location||'';
   document.getElementById('ep_about').value = ME.about||'';
   document.getElementById('ep_skills').value = JSON.parse(ME.skills||'[]').join(', ');
-  const prev = document.getElementById('ep_avatarPreview');
-  const ini = ME.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-  prev.innerHTML = ME.avatar ? `<img src="${ME.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : ini;
+  var prev = document.getElementById('ep_avatarPreview');
+  var ini = ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  prev.innerHTML = ME.avatar ? '<img src="'+ME.avatar+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">' : ini;
   openModal('editProfileModal');
 }
 async function saveProfile() {
-  const skills = document.getElementById('ep_skills').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const data = {
+  var skills = document.getElementById('ep_skills').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var data = {
     name:document.getElementById('ep_name').value.trim(),
     headline:document.getElementById('ep_headline').value.trim(),
     location:document.getElementById('ep_location').value.trim(),
@@ -2011,85 +1930,84 @@ async function saveProfile() {
   const r = await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   const d = await r.json();
   if (d.error) { showToast('Error saving', true); return; }
-  ME = {...ME,...data};
+  ME = Object.assign({}, ME, data);
   if (ME.avatar) updateAllAvatars(ME.avatar);
-  refreshUserUI(); closeModal('editProfileModal'); showToast('Profile updated! ✓');
+  refreshUserUI(); closeModal('editProfileModal'); showToast('Profile updated! \u2713');
 }
 
-// ── RESUME ────────────────────────────────
-const rdz = document.getElementById('resumeDropZone');
+// RESUME
+var rdz = document.getElementById('resumeDropZone');
 if (rdz) {
-  rdz.addEventListener('dragover',e=>{e.preventDefault();rdz.classList.add('drag')});
-  rdz.addEventListener('dragleave',()=>rdz.classList.remove('drag'));
-  rdz.addEventListener('drop',e=>{e.preventDefault();rdz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)processResume(f)});
+  rdz.addEventListener('dragover',function(e){e.preventDefault();rdz.classList.add('drag');});
+  rdz.addEventListener('dragleave',function(){rdz.classList.remove('drag');});
+  rdz.addEventListener('drop',function(e){e.preventDefault();rdz.classList.remove('drag');var f=e.dataTransfer.files[0];if(f)processResume(f);});
 }
-function handleResumeUpload(input){if(input.files[0])processResume(input.files[0])}
+function handleResumeUpload(input){if(input.files[0])processResume(input.files[0]);}
 async function processResume(file) {
   document.getElementById('resumeLoading').style.display='block';
   document.getElementById('analysisResult').classList.remove('show');
-  const steps=['Extracting text...','Analyzing skills...','Scoring ATS...','Finding job matches...','Building roadmap...'];
-  let si=0;
-  const iv=setInterval(()=>{document.getElementById('resumeLoadText').textContent=steps[si%steps.length];si++;},1200);
-  const fd=new FormData(); fd.append('resume',file);
+  var steps=['Extracting text...','Analyzing skills...','Scoring ATS...','Finding job matches...','Building roadmap...'];
+  var si=0;
+  var iv=setInterval(function(){document.getElementById('resumeLoadText').textContent=steps[si%steps.length];si++;},1200);
+  var fd=new FormData(); fd.append('resume',file);
   try {
     const r=await fetch('/api/analyze_resume',{method:'POST',body:fd});
     const d=await r.json();
     clearInterval(iv); document.getElementById('resumeLoading').style.display='none';
-    if(d.error){showToast('Analysis failed: '+d.error,true);return}
+    if(d.error){showToast('Analysis failed: '+d.error,true);return;}
     renderAnalysis(d);
     if(d.skills){ME.skills=JSON.stringify(d.skills);refreshUserUI();}
   } catch(e) { clearInterval(iv); document.getElementById('resumeLoading').style.display='none'; showToast('Something went wrong.',true); }
 }
 function renderAnalysis(d) {
-  const ats=d.ats||{}; const gap=d.gap||{}; const jobs=d.jobs||[];
-  let html=`
-  <div class="ai-card"><h4>✦ AI Profile Summary</h4><p>${d.ai_summary||'Analysis complete.'}</p></div>
-  <div class="score-grid">
-    <div class="score-box"><div class="val" style="color:var(--sky)">${d.profile_score||0}<span style="font-size:.7em">%</span></div><div class="lbl">Profile</div></div>
-    <div class="score-box"><div class="val" style="color:#a78bfa">${ats.overall||0}<span style="font-size:.7em">%</span></div><div class="lbl">ATS</div></div>
-    <div class="score-box"><div class="val" style="color:var(--mint)">${ats.keywords||0}<span style="font-size:.7em">%</span></div><div class="lbl">Keywords</div></div>
-    <div class="score-box"><div class="val" style="color:var(--amber)">${ats.readability||0}<span style="font-size:.7em">%</span></div><div class="lbl">Readability</div></div>
-  </div>`;
-  if(d.skills&&d.skills.length){html+=`<div style="margin-bottom:14px"><div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:7px">Detected Skills</div><div style="display:flex;flex-wrap:wrap;gap:5px">${d.skills.map(s=>`<span class="tag tag-blue">${s}</span>`).join('')}</div></div>`;}
+  var ats=d.ats||{}; var gap=d.gap||{}; var jobs=d.jobs||[];
+  var html=
+    '<div class="ai-card"><h4>&#10022; AI Profile Summary</h4><p>'+(d.ai_summary||'Analysis complete.')+'</p></div>' +
+    '<div class="score-grid">' +
+      '<div class="score-box"><div class="val" style="color:var(--sky)">'+(d.profile_score||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Profile</div></div>' +
+      '<div class="score-box"><div class="val" style="color:#a78bfa">'+(ats.overall||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">ATS</div></div>' +
+      '<div class="score-box"><div class="val" style="color:var(--mint)">'+(ats.keywords||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Keywords</div></div>' +
+      '<div class="score-box"><div class="val" style="color:var(--amber)">'+(ats.readability||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Readability</div></div>' +
+    '</div>';
+  if(d.skills&&d.skills.length){html+='<div style="margin-bottom:14px"><div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:7px">Detected Skills</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+d.skills.map(function(s){return '<span class="tag tag-blue">'+s+'</span>';}).join('')+'</div></div>';}
   if(jobs.length){
-    html+=`<div style="margin-bottom:14px"><div style="font-size:.88rem;font-weight:900;letter-spacing:-.03em;margin-bottom:9px">🎯 Top Job Matches</div>`;
-    jobs.slice(0,5).forEach(j=>{html+=`<div class="job-card-r"><div class="job-info"><div class="job-title">${j.title}</div><div class="job-co">${j.company} · ${j.type}</div></div><div class="job-bar"><div class="job-fill" style="width:0" data-w="${j.match_pct}%"></div></div><div class="job-pct">${j.match_pct}%</div></div>`;});
-    html+=`</div>`;
+    html+='<div style="margin-bottom:14px"><div style="font-size:.88rem;font-weight:900;letter-spacing:-.03em;margin-bottom:9px">&#127919; Top Job Matches</div>';
+    jobs.slice(0,5).forEach(function(j){html+='<div class="job-card-r"><div class="job-info"><div class="job-title">'+j.title+'</div><div class="job-co">'+j.company+' \u00b7 '+j.type+'</div></div><div class="job-bar"><div class="job-fill" style="width:0" data-w="'+j.match_pct+'%"></div></div><div class="job-pct">'+j.match_pct+'%</div></div>';});
+    html+='</div>';
   }
-  if(gap.missing_skills&&gap.missing_skills.length){html+=`<div class="ai-card warn"><h4>📈 Skills to Develop</h4><p style="margin-bottom:9px">${gap.overview||''}</p><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">${gap.missing_skills.map(s=>`<span class="tag tag-purple">${s}</span>`).join('')}</div></div>`;}
-  if(ats.suggestions&&ats.suggestions.length){ats.suggestions.forEach(s=>{html+=`<div class="ai-card warn"><h4>${s.title}</h4><p>${s.detail}</p></div>`;});}
-  const result=document.getElementById('analysisResult');
+  if(gap.missing_skills&&gap.missing_skills.length){html+='<div class="ai-card warn"><h4>&#128200; Skills to Develop</h4><p style="margin-bottom:9px">'+(gap.overview||'')+'</p><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">'+gap.missing_skills.map(function(s){return '<span class="tag tag-purple">'+s+'</span>';}).join('')+'</div></div>';}
+  if(ats.suggestions&&ats.suggestions.length){ats.suggestions.forEach(function(s){html+='<div class="ai-card warn"><h4>'+s.title+'</h4><p>'+s.detail+'</p></div>';});}
+  var result=document.getElementById('analysisResult');
   result.innerHTML=html; result.classList.add('show');
-  setTimeout(()=>document.querySelectorAll('.job-fill').forEach(b=>b.style.width=b.dataset.w),150);
+  setTimeout(function(){document.querySelectorAll('.job-fill').forEach(function(b){b.style.width=b.dataset.w;});},150);
 }
 function loadSavedAnalysis() {
   if(ME&&ME.resume_analysis&&ME.resume_analysis!=='{}'){
-    try{const d=JSON.parse(ME.resume_analysis);if(d&&d.ai_summary)renderAnalysis(d);}catch(e){}
+    try{var d=JSON.parse(ME.resume_analysis);if(d&&d.ai_summary)renderAnalysis(d);}catch(e){}
   }
 }
 
-// ── UTILS ─────────────────────────────────
-function openModal(id){document.getElementById(id).classList.add('show')}
-function closeModal(id){document.getElementById(id).classList.remove('show')}
-document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
-function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val}
-function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
-function escAttr(s){return String(s).replace(/'/g,"\\'").replace(/\n/g,' ')}
+// UTILS
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+document.querySelectorAll('.modal-bg').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)m.classList.remove('show');});});
+function setText(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+function escAttr(s){return String(s).replace(/'/g,"\\'").replace(/\n/g,' ');}
 function timeAgo(ts){
-  const d=new Date(ts+'Z'),n=new Date(),diff=(n-d)/1000;
+  var d=new Date(ts+'Z'),n=new Date(),diff=(n-d)/1000;
   if(diff<60)return'Just now';
   if(diff<3600)return Math.floor(diff/60)+'m ago';
   if(diff<86400)return Math.floor(diff/3600)+'h ago';
   return Math.floor(diff/86400)+'d ago';
 }
-function showToast(msg, isErr=false) {
-  const el=document.getElementById('toast');
+function showToast(msg, isErr) {
+  var el=document.getElementById('toast');
   el.textContent=msg; el.className='toast'+(isErr?' err':'');
   el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),2800);
+  setTimeout(function(){el.classList.remove('show');},2800);
 }
 </script>
-
 </body>
 </html>"""
 
@@ -2102,7 +2020,7 @@ function showToast(msg, isErr=false) {
 def index():
     return HTML
 
-# ── AUTH ──────────────────────────────────
+# AUTH
 @app.route("/api/register", methods=["POST"])
 def register():
     d = request.json
@@ -2150,7 +2068,7 @@ def me():
     if not u: return jsonify({"error": "Not authenticated"}), 401
     return jsonify(row_to_dict(u))
 
-# ── PROFILE ───────────────────────────────
+# PROFILE
 @app.route("/api/profile", methods=["PUT"])
 @login_required
 def update_profile():
@@ -2163,7 +2081,7 @@ def update_profile():
     user = row_to_dict(db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone())
     return jsonify(user)
 
-# ── POSTS ─────────────────────────────────
+# POSTS
 @app.route("/api/posts", methods=["GET"])
 @login_required
 def get_posts():
@@ -2245,7 +2163,7 @@ def like_post(post_id):
     db.commit()
     return jsonify({"ok": True})
 
-# ── COMMENTS ──────────────────────────────
+# COMMENTS
 @app.route("/api/posts/<int:post_id>/comments", methods=["GET"])
 @login_required
 def get_comments(post_id):
@@ -2270,7 +2188,7 @@ def add_comment(post_id):
         add_notification(post["user_id"], "comment", f"{user['name']} commented on your post")
     return jsonify({"ok": True})
 
-# ── USERS ─────────────────────────────────
+# USERS
 @app.route("/api/users")
 @login_required
 def get_users():
@@ -2278,7 +2196,7 @@ def get_users():
     rows = db.execute("SELECT id,name,email,headline,location,skills,account_type FROM users").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# ── NOTIFICATIONS ─────────────────────────
+# NOTIFICATIONS
 @app.route("/api/notifications")
 @login_required
 def get_notifications():
@@ -2295,7 +2213,7 @@ def mark_notifications_read():
     db.commit()
     return jsonify({"ok": True})
 
-# ── MESSAGES ──────────────────────────────
+# MESSAGES
 @app.route("/api/messages", methods=["POST"])
 @login_required
 def send_message():
@@ -2350,7 +2268,7 @@ def unread_count():
                      (session["user_id"],)).fetchone()
     return jsonify({"count": row["cnt"]})
 
-# ── JOBS ──────────────────────────────────
+# JOBS
 @app.route("/api/jobs/apply", methods=["POST"])
 @login_required
 def apply_job():
@@ -2379,7 +2297,6 @@ def get_applied():
 @app.route("/api/jobs/post", methods=["POST"])
 @login_required
 def post_job():
-    """Company accounts post new job listings."""
     user = current_user()
     if not user or user["account_type"] != "company":
         return jsonify({"error": "Only company accounts can post jobs"}), 403
@@ -2396,7 +2313,6 @@ def post_job():
          d.get("location","Remote"), d.get("type","Full-time"),
          d.get("salary",""), d.get("description",""), d.get("skills","[]")))
     db.commit()
-    # notify all professionals
     professionals = db.execute(
         "SELECT id FROM users WHERE id!=? AND account_type='professional'",
         (session["user_id"],)).fetchall()
@@ -2425,7 +2341,7 @@ def delete_company_job(job_id):
     db.commit()
     return jsonify({"ok": True})
 
-# ── AI CHAT ───────────────────────────────
+# AI CHAT
 @app.route("/api/ai/chat", methods=["POST"])
 @login_required
 def ai_chat():
@@ -2433,7 +2349,7 @@ def ai_chat():
     messages = d.get("messages", [])
     user_ctx = d.get("user", {})
 
-    system = """You are gathR AI — a sharp, knowledgeable career coach and professional network assistant built into the gathR platform. You have the knowledge and capability of a top-tier AI assistant.
+    system = """You are gathR AI — a sharp, knowledgeable career coach and professional network assistant built into the gathR platform.
 
 User profile:
 - Name: {name}
@@ -2449,48 +2365,39 @@ Your capabilities:
 - Job search strategy and LinkedIn optimisation
 - Networking outreach messages and templates
 - Career change roadmaps and skill gap analysis
-- General questions on any topic — you are a capable, general-purpose AI
+- General questions on any topic
 
 Behaviour rules:
-- Be direct, specific, and genuinely helpful — not vague or generic
-- Use markdown formatting: **bold** for emphasis, bullet lists for steps, headers for sections
+- Be direct, specific, and genuinely helpful
+- Use markdown formatting: **bold**, bullet lists, headers
 - Give real, actionable advice with concrete examples
-- Match the user's language and tone
-- If asked something outside careers (coding, maths, general knowledge), answer it fully — do not refuse
-- Never say you "cannot" help with something you actually can
-- Keep responses focused but complete — do not truncate mid-thought""".format(
+- Never say you cannot help with something you actually can
+- Keep responses focused but complete""".format(
         name=safe_str(user_ctx.get("name"), "Unknown"),
         headline=safe_str(user_ctx.get("headline"), "Professional"),
         skills=safe_str(user_ctx.get("skills"), "[]"),
         about=safe_str(user_ctx.get("about"), ""),
     )
 
-    # Load full conversation history from DB so context survives page refresh
     db = get_db()
     db_history = db.execute(
         "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
         (session["user_id"],)
     ).fetchall()
 
-    # Merge DB history with any new messages from the client,
-    # deduplicate by keeping DB as source of truth + the latest user message
     history = [{"role": r["role"], "content": safe_str(r["content"])} for r in db_history]
 
-    # Append the latest user message if it isn't already the last one in DB
     if messages:
         latest = messages[-1]
         latest_content = safe_str(latest.get("content", ""))
         if not history or history[-1]["role"] != "user" or history[-1]["content"] != latest_content:
             history.append({"role": "user", "content": latest_content})
 
-    # Keep last 40 turns (20 exchanges) to stay within context limits
     history = history[-40:]
 
-    # Ensure valid alternating roles (Anthropic requirement)
     cleaned = []
     for msg in history:
         if cleaned and cleaned[-1]["role"] == msg["role"]:
-            # merge consecutive same-role messages
             cleaned[-1]["content"] += "\n" + msg["content"]
         else:
             cleaned.append({"role": msg["role"], "content": msg["content"][:4000]})
@@ -2507,7 +2414,6 @@ Behaviour rules:
         )
         reply = msg.content[0].text
 
-        # Persist this exchange to DB
         if messages:
             last_user_msg = safe_str(messages[-1].get("content", ""))
             db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
@@ -2522,7 +2428,6 @@ Behaviour rules:
 @app.route("/api/ai/history")
 @login_required
 def get_ai_history():
-    """Return the full chat history for the current user."""
     db = get_db()
     rows = db.execute(
         "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
@@ -2538,7 +2443,7 @@ def clear_ai_chat():
     db.commit()
     return jsonify({"ok": True})
 
-# ── CONNECTIONS ───────────────────────────
+# CONNECTIONS
 @app.route("/api/connect", methods=["POST"])
 @login_required
 def connect_user():
@@ -2554,7 +2459,7 @@ def connect_user():
         add_notification(to, "connection", f"{user['name']} wants to connect with you")
     return jsonify({"ok": True})
 
-# ── RESUME AI ─────────────────────────────
+# RESUME AI
 @app.route("/api/analyze_resume", methods=["POST"])
 @login_required
 def analyze_resume():
@@ -2613,7 +2518,7 @@ Return exactly this JSON structure:
         "skills": ai_data.get("skills",[]),
         "profile_score": ai_data.get("profile_score",70),
         "ai_summary": ai_data.get("ai_summary",""),
-        "jobs": [],   # job matching now comes from live company postings only
+        "jobs": [],
         "ats": ai_data.get("ats",{}),
         "gap": ai_data.get("gap",{}),
     }
@@ -2624,7 +2529,7 @@ Return exactly this JSON structure:
     db.commit()
     return jsonify(result)
 
-# ── STATIC ────────────────────────────────
+# STATIC
 from flask import send_from_directory
 
 @app.route("/uploads/<path:filename>")
