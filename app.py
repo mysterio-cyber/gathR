@@ -175,14 +175,24 @@ def current_user():
     return db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
 
 def sanitize(text):
+    """Clean text while preserving valid Unicode (Telugu, Hindi, emoji, etc.)."""
     if not text: return ""
-    text = unicodedata.normalize("NFKD", text)
+    text = unicodedata.normalize("NFC", str(text))
     for bad, good in [("\u2013","-"),("\u2014","-"),("\u2018","'"),("\u2019","'"),
                       ("\u201c",'"'),("\u201d",'"'),("\u2022","*"),("\u00a0"," "),
                       ("\u2026","..."),("\u200b",""),("\ufeff","")]:
         text = text.replace(bad, good)
-    cleaned = "".join(c if (32 <= ord(c) < 127 or c in "\n\r\t") else " " for c in text)
+    # strip only control characters; keep all printable Unicode
+    cleaned = "".join(c if (c >= " " or c in "\n\r\t") else " " for c in text)
     return re.sub(r"[ \t]+", " ", cleaned).strip()
+
+def safe_str(val, fallback=""):
+    """Guarantee a clean UTF-8 string safe to pass to the Anthropic API."""
+    try:
+        s = str(val) if val is not None else fallback
+        return s.encode("utf-8", errors="replace").decode("utf-8")
+    except Exception:
+        return fallback
 
 def extract_pdf(file_bytes):
     try:
@@ -2374,20 +2384,15 @@ def ai_chat():
     messages = d.get("messages", [])
     user_ctx = d.get("user", {})
 
-    def safe_str(val, fallback=""):
-        """Encode to UTF-8 then back — strips anything that can't survive the round-trip."""
-        try:
-            return str(val or fallback).encode("utf-8", errors="ignore").decode("utf-8")
-        except Exception:
-            return fallback
-
-    system = f"""You are gathR AI, a friendly professional career coach and networking assistant for the gathR professional network platform.
+    # Use safe_str on every user field so non-ASCII (Telugu, Hindi, emoji)
+    # never triggers a codec error inside the Anthropic SDK.
+    system = """You are gathR AI, a friendly professional career coach and networking assistant for the gathR professional network platform.
 
 User context:
-- Name: {safe_str(user_ctx.get('name'), 'Unknown')}
-- Headline: {safe_str(user_ctx.get('headline'))}
-- Skills: {safe_str(user_ctx.get('skills'), '[]')}
-- About: {safe_str(user_ctx.get('about'))}
+- Name: {name}
+- Headline: {headline}
+- Skills: {skills}
+- About: {about}
 
 You help with:
 - Career advice, job search strategies, and interview preparation
@@ -2399,10 +2404,15 @@ You help with:
 - Writing professional messages, emails, and outreach
 
 Be concise, actionable, and encouraging. Use the user's context to personalize advice.
-Keep responses under 200 words unless complex technical advice is needed."""
+Keep responses under 200 words unless complex technical advice is needed.""".format(
+        name=safe_str(user_ctx.get("name"), "Unknown"),
+        headline=safe_str(user_ctx.get("headline")),
+        skills=safe_str(user_ctx.get("skills"), "[]"),
+        about=safe_str(user_ctx.get("about")),
+    )
 
     safe_messages = [
-        {"role": m["role"], "content": safe_str(m["content"])[:2000]}
+        {"role": m["role"], "content": safe_str(m.get("content", ""))[:2000]}
         for m in messages[-10:]
     ]
     try:
@@ -2417,13 +2427,21 @@ Keep responses under 200 words unless complex technical advice is needed."""
         if messages:
             last = messages[-1]
             db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                       (session["user_id"], last["role"], safe_str(last["content"])[:2000]))
+                       (session["user_id"], last["role"], safe_str(last.get("content",""))[:2000]))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
                    (session["user_id"], "assistant", reply[:2000]))
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/ai/clear", methods=["POST"])
+@login_required
+def clear_ai_chat():
+    db = get_db()
+    db.execute("DELETE FROM ai_chat WHERE user_id=?", (session["user_id"],))
+    db.commit()
+    return jsonify({"ok": True})
 
 # ── CONNECTIONS ───────────────────────────
 @app.route("/api/connect", methods=["POST"])
