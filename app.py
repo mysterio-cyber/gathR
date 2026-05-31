@@ -1,12 +1,9 @@
 """
 gathR v3 — Corporate Professional Network
-Fixes: AI model string, error surfacing, renderMarkdown JS bug
-Adds:  Company accounts + job posting UI (+button),
-       Social sharing (WhatsApp, Instagram, LinkedIn, Twitter),
-       Network intimation / invite via social apps
++ TARA: AI Career Assistant (replaces generic AI bot)
 """
 
-import os, io, re, json, uuid, unicodedata
+import os, io, re, json, uuid, unicodedata, random
 from datetime import datetime
 from functools import wraps
 import PyPDF2
@@ -228,6 +225,85 @@ def add_notification(user_id, ntype, message, link=""):
     db.commit()
 
 # ═══════════════════════════════════════════
+#  TARA — CAREER ASSISTANT RESPONSES
+# ═══════════════════════════════════════════
+TARA_RESPONSES = {
+    "greet": [
+        "Hey 👋 Welcome to gathR! I'm TARA, your career assistant. Ask me about your resume, job search, interviews, or skills.",
+        "Hi there 💼 I'm TARA. Ready to help with resume analysis, job matching, or career growth. What do you need?",
+        "Hello! 🚀 I'm TARA on gathR. Ask me about job opportunities, resume tips, or upskilling paths."
+    ],
+    "resume": [
+        "📄 To improve your resume: use strong action verbs, quantify achievements (e.g. 'increased sales by 30%'), tailor keywords to each job description, and keep it to 1–2 pages.",
+        "💡 ATS tip: Mirror exact keywords from the job posting in your resume. Avoid tables, headers/footers, and images — they confuse ATS parsers.",
+        "✅ Strong resume sections: Summary, Skills, Experience (with metrics), Projects, Education, Certifications. Upload yours on the Resume page for a full AI analysis!"
+    ],
+    "jobs": [
+        "🔍 For effective job searching: apply on company career pages directly, set up LinkedIn and Naukri alerts, and target roles where you match 70%+ of requirements.",
+        "💼 Quality over quantity — 10 tailored applications beat 100 generic ones. Research the company, customise your resume, and write a focused cover letter.",
+        "📊 Check the Jobs page on gathR — companies post openings directly here. Filter by location, type, and skills to find your best matches."
+    ],
+    "skills": [
+        "🎯 Top in-demand skills right now: Python, SQL, cloud (AWS/Azure/GCP), React, data analysis, product management, and AI/ML fundamentals.",
+        "📚 Free learning platforms: Google Career Certificates, Coursera, edX, freeCodeCamp, Kaggle (for data), and YouTube. Most offer certificates you can add to your profile.",
+        "🏆 Certifications that add real value: AWS Certified, Google Analytics, PMP, Salesforce, HubSpot, Meta Blueprint — pick ones relevant to your target role."
+    ],
+    "interview": [
+        "🎤 For behavioural interviews, use the STAR method — Situation, Task, Action, Result. Prep 5–6 strong stories that can flex across different questions.",
+        "💡 Research the company thoroughly: their products, recent news, culture, and the team you'd join. Interviewers notice when you've done your homework.",
+        "✅ Common interview questions to prep: 'Tell me about yourself', 'Why this role?', 'Biggest weakness?', 'Where do you see yourself in 5 years?', and 'Tell me about a challenge you overcame.'"
+    ],
+    "salary": [
+        "💰 Before negotiating: research market rates on Glassdoor, Levels.fyi, AmbitionBox, and LinkedIn Salary. Know your number before the conversation.",
+        "🤝 When negotiating: never give the first number, anchor high with a range, and justify with market data + your value. It's expected — not rude.",
+        "📈 If the base is fixed, negotiate joining bonus, remote flexibility, extra leave, learning budget, or earlier review cycles."
+    ],
+    "network": [
+        "🤝 Networking tip: reach out with a specific, genuine message — mention shared interests or their work. Generic 'Let's connect' messages rarely get replies.",
+        "💡 Informational interviews are underrated. Ask for 20 minutes to learn about someone's role — 80% of jobs are filled through referrals.",
+        "🌐 On gathR, use the Network page to connect with professionals and companies. A warm referral can 5x your chances of getting an interview."
+    ],
+    "training": [
+        "📚 For structured learning: pick one skill, find a project-based course, build something real, and add it to your portfolio. Employers value proof over certificates.",
+        "🎯 Best platforms for professionals: Udemy (affordable), Coursera (university-backed), LinkedIn Learning (career-focused), Pluralsight (tech), and NPTEL (free, India).",
+        "🏅 Build a learning habit: 30 minutes a day compounds fast. Track progress, share learnings on your gathR feed, and apply skills to real projects."
+    ],
+    "linkedin": [
+        "💼 LinkedIn profile essentials: professional photo, keyword-rich headline, detailed About section, quantified experience bullets, and 5+ skills endorsed.",
+        "📣 Post consistently on LinkedIn — insights, learnings, wins, opinions. Profiles that post weekly get 5x more views and recruiter outreach.",
+        "🔍 Recruiters search by keywords — make sure your headline, summary, and experience sections include the exact job titles and tools you want to be found for."
+    ],
+    "default": [
+        "💼 Great question! I can help with resume analysis, job search strategy, interview prep, salary negotiation, skill building, and networking. What do you need?",
+        "🚀 I'm here to help you grow professionally. Try asking about your resume, current job openings, in-demand skills, or how to ace your next interview.",
+        "📊 Not sure where to start? Tell me your current role and where you want to be — I'll map out a clear path forward.",
+        "💡 Quick wins I can help with: optimising your resume for ATS, finding the right jobs to apply for, prepping for interviews, or identifying skill gaps."
+    ]
+}
+
+def rule_based_reply(user_msg):
+    msg = user_msg.lower()
+    if any(w in msg for w in ["hello", "hi ", "hey ", "hi!", "good morning", "good evening", "start", "help me"]):
+        return random.choice(TARA_RESPONSES["greet"])
+    if any(w in msg for w in ["resume", "cv", "curriculum", "ats", "applicant tracking", "resume tip", "resume format", "upload resume"]):
+        return random.choice(TARA_RESPONSES["resume"])
+    if any(w in msg for w in ["job", "jobs", "opening", "vacancy", "apply", "application", "hiring", "recruit", "naukri", "indeed", "job search", "job hunt"]):
+        return random.choice(TARA_RESPONSES["jobs"])
+    if any(w in msg for w in ["skill", "skills", "learn", "course", "certification", "upskill", "python", "sql", "aws", "react", "excel", "data"]):
+        return random.choice(TARA_RESPONSES["skills"])
+    if any(w in msg for w in ["interview", "behavioural", "technical interview", "star method", "screening", "hr round"]):
+        return random.choice(TARA_RESPONSES["interview"])
+    if any(w in msg for w in ["salary", "pay", "ctc", "compensation", "negotiate", "offer", "package", "hike", "increment", "raise"]):
+        return random.choice(TARA_RESPONSES["salary"])
+    if any(w in msg for w in ["network", "connect", "connection", "referral", "reach out", "outreach", "informational"]):
+        return random.choice(TARA_RESPONSES["network"])
+    if any(w in msg for w in ["training", "udemy", "coursera", "edx", "learn online", "youtube", "tutorial", "mooc", "nptel"]):
+        return random.choice(TARA_RESPONSES["training"])
+    if any(w in msg for w in ["linkedin", "profile", "headline", "about section", "summary", "recruiter", "profile view"]):
+        return random.choice(TARA_RESPONSES["linkedin"])
+    return random.choice(TARA_RESPONSES["default"])
+
+# ═══════════════════════════════════════════
 #  HTML TEMPLATE
 # ═══════════════════════════════════════════
 HTML = r"""<!DOCTYPE html>
@@ -253,8 +329,6 @@ button{cursor:pointer}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
-
-/* AUTH */
 .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
   background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(26,108,255,.12) 0%,transparent 70%),
              radial-gradient(ellipse 60% 50% at 85% 90%,rgba(124,58,237,.1) 0%,transparent 65%),var(--ink);position:relative}
@@ -284,12 +358,8 @@ button{cursor:pointer}
 .atype-btn.active{border-color:var(--sky);background:rgba(26,108,255,.08);color:var(--sky)}
 .atype-icon{font-size:1.4rem;display:block;margin-bottom:4px}
 .company-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:var(--amber);padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:800}
-
-/* APP SHELL */
 .app{display:none;min-height:100vh}
 .app.show{display:block}
-
-/* TOPBAR */
 .topbar{position:sticky;top:0;z-index:100;background:rgba(10,12,15,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;height:56px;gap:10px}
 .topbar-logo{font-weight:900;font-size:1.35rem;letter-spacing:-.05em;flex-shrink:0}
 .topbar-logo span{color:var(--sky)}
@@ -306,7 +376,6 @@ button{cursor:pointer}
 .sr-name{font-size:.82rem;font-weight:700}
 .sr-sub{font-size:.72rem;color:var(--muted)}
 .sr-type{font-size:.68rem;font-weight:700;color:var(--sky);background:rgba(26,108,255,.1);padding:2px 7px;border-radius:999px}
-
 .topbar-nav{display:flex;gap:2px;margin-left:auto}
 .tnav{padding:7px 11px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:5px;letter-spacing:-.01em;position:relative}
 .tnav:hover{background:var(--ink3);color:var(--text)}
@@ -319,11 +388,10 @@ button{cursor:pointer}
 .avatar.lg{width:72px;height:72px;font-size:1.5rem}
 .avatar.xl{width:100px;height:100px;font-size:2rem;border:3px solid var(--ink)}
 .avatar.company-av{background:linear-gradient(135deg,var(--amber),#f97316)}
+.avatar.tara-av{background:linear-gradient(135deg,var(--mint),var(--violet))}
 .uname{font-size:.82rem;font-weight:700}
 .logout-btn{background:none;border:none;color:var(--muted);font-size:.78rem;cursor:pointer;padding:6px 10px;border-radius:8px;font-weight:600;transition:all .2s}
 .logout-btn:hover{background:rgba(244,63,94,.08);color:var(--rose)}
-
-/* LAYOUT */
 .main-layout{display:grid;grid-template-columns:230px 1fr 260px;gap:16px;max-width:1140px;margin:0 auto;padding:20px 14px}
 @media(max-width:1024px){.main-layout{grid-template-columns:0 1fr 0;padding:12px 10px}.sidebar-left,.sidebar-right{display:none}}
 .sidebar-left,.sidebar-right{display:flex;flex-direction:column;gap:12px}
@@ -344,8 +412,6 @@ button{cursor:pointer}
 .s-link .icon{font-size:.85rem;width:16px;text-align:center}
 .s-section{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:14px}
 .s-section-title{font-size:.67rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
-
-/* FEED */
 .feed{display:flex;flex-direction:column;gap:12px}
 .composer{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:16px}
 .composer-top{display:flex;gap:11px;align-items:flex-start}
@@ -363,8 +429,6 @@ button{cursor:pointer}
 .attach-preview span{flex:1;color:var(--sky);font-weight:600}
 .attach-preview .rm{cursor:pointer;color:var(--muted);transition:color .2s}
 .attach-preview .rm:hover{color:var(--rose)}
-
-/* POST CARDS */
 .post-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;animation:slideUp .3s cubic-bezier(.16,1,.3,1) both;transition:border-color .2s}
 .post-card:hover{border-color:var(--line2)}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
@@ -385,26 +449,17 @@ button{cursor:pointer}
 .p-action{padding:6px 12px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:.77rem;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:5px}
 .p-action:hover{background:var(--ink3);color:var(--text)}
 .p-action.liked{color:var(--sky);background:rgba(26,108,255,.08)}
-
-/* SHARE PANEL */
 .share-panel{display:none;padding:10px 14px;border-top:1px solid var(--line);background:var(--ink3)}
 .share-panel.show{display:block}
 .share-title{font-size:.72rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px}
 .share-btns{display:flex;gap:7px;flex-wrap:wrap}
 .share-btn{display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;border:1px solid var(--line2);background:transparent;color:var(--text);font-size:.77rem;font-weight:700;cursor:pointer;transition:all .2s}
 .share-btn:hover{transform:translateY(-1px)}
-.share-btn.wa{border-color:rgba(37,211,102,.3);color:#25d366}
-.share-btn.wa:hover{background:rgba(37,211,102,.08)}
-.share-btn.ig{border-color:rgba(228,64,95,.3);color:#e4405f}
-.share-btn.ig:hover{background:rgba(228,64,95,.08)}
-.share-btn.li{border-color:rgba(0,119,181,.3);color:#0077b5}
-.share-btn.li:hover{background:rgba(0,119,181,.08)}
-.share-btn.tw{border-color:rgba(29,161,242,.3);color:#1da1f2}
-.share-btn.tw:hover{background:rgba(29,161,242,.08)}
-.share-btn.cp{border-color:var(--line2);color:var(--muted)}
-.share-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
-
-/* COMMENTS */
+.share-btn.wa{border-color:rgba(37,211,102,.3);color:#25d366}.share-btn.wa:hover{background:rgba(37,211,102,.08)}
+.share-btn.ig{border-color:rgba(228,64,95,.3);color:#e4405f}.share-btn.ig:hover{background:rgba(228,64,95,.08)}
+.share-btn.li{border-color:rgba(0,119,181,.3);color:#0077b5}.share-btn.li:hover{background:rgba(0,119,181,.08)}
+.share-btn.tw{border-color:rgba(29,161,242,.3);color:#1da1f2}.share-btn.tw:hover{background:rgba(29,161,242,.08)}
+.share-btn.cp{border-color:var(--line2);color:var(--muted)}.share-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
 .comments-area{border-top:1px solid var(--line);background:var(--ink3)}
 .comment-item{display:flex;gap:9px;padding:10px 14px;border-bottom:1px solid rgba(35,43,56,.5)}
 .comment-item:last-child{border-bottom:none}
@@ -417,8 +472,6 @@ button{cursor:pointer}
 .comment-input-area input:focus{border-color:var(--sky)}
 .comment-input-area button{padding:8px 14px;background:var(--sky);border:none;border-radius:8px;color:#fff;font-size:.77rem;font-weight:800;transition:all .2s}
 .comment-input-area button:hover{background:var(--sky2)}
-
-/* PROFILE */
 .profile-box{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;margin-bottom:12px}
 .profile-cover{height:150px;background:linear-gradient(135deg,rgba(26,108,255,.25) 0%,rgba(124,58,237,.2) 50%,rgba(0,196,140,.1) 100%);position:relative;overflow:hidden}
 .profile-cover::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:50px;background:linear-gradient(to top,var(--card),transparent)}
@@ -433,8 +486,6 @@ button{cursor:pointer}
 .profile-skills{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .skill-tag{background:rgba(26,108,255,.08);border:1px solid rgba(26,108,255,.2);color:var(--sky);padding:4px 11px;border-radius:999px;font-size:.72rem;font-weight:700;transition:all .2s}
 .skill-tag:hover{background:rgba(26,108,255,.14)}
-
-/* RESUME */
 .resume-section{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:22px;margin-bottom:12px}
 .rs-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .rs-title{font-size:1rem;font-weight:900;letter-spacing:-.03em}
@@ -466,8 +517,6 @@ button{cursor:pointer}
 .job-bar{width:80px;height:4px;background:var(--line2);border-radius:4px;overflow:hidden;flex-shrink:0}
 .job-fill{height:100%;background:linear-gradient(90deg,var(--sky),var(--violet));border-radius:4px;transition:width 1.2s cubic-bezier(.16,1,.3,1)}
 .job-pct{font-family:'Geist Mono',monospace;font-size:.79rem;font-weight:500;color:var(--sky);min-width:36px;text-align:right}
-
-/* ANALYTICS */
 .analytics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
 .metric-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px 16px;text-align:center}
 .metric-val{font-family:'Geist Mono',monospace;font-size:2rem;font-weight:500;letter-spacing:-.05em}
@@ -493,8 +542,6 @@ button{cursor:pointer}
 .skill-bar-item .skill-cnt{font-size:.74rem;color:var(--muted);font-family:'Geist Mono',monospace}
 .skill-bar-track{height:5px;background:var(--line2);border-radius:4px;overflow:hidden}
 .skill-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--sky),var(--violet));transition:width .9s cubic-bezier(.16,1,.3,1)}
-
-/* JOB BOARD */
 .job-board-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px;transition:border-color .2s}
 .job-board-card:hover{border-color:var(--line2)}
 .job-board-card.company-posted{border-left:3px solid var(--amber)}
@@ -521,8 +568,6 @@ button{cursor:pointer}
 .post-job-fab{position:fixed;bottom:28px;right:28px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#f97316);border:none;color:#fff;font-size:1.5rem;font-weight:900;box-shadow:0 4px 20px rgba(245,158,11,.4);cursor:pointer;transition:all .25s;z-index:90;display:none;align-items:center;justify-content:center}
 .post-job-fab:hover{transform:scale(1.1) translateY(-2px);box-shadow:0 6px 28px rgba(245,158,11,.5)}
 .post-job-fab.show{display:flex}
-
-/* NOTIFICATIONS */
 .notif-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
 .notif-header{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
 .notif-title{font-size:.95rem;font-weight:900;letter-spacing:-.03em}
@@ -541,8 +586,6 @@ button{cursor:pointer}
 .notif-msg{font-size:.82rem;line-height:1.6;color:rgba(228,235,245,.87)}
 .notif-time{font-size:.7rem;color:var(--dim);font-family:'Geist Mono',monospace;margin-top:3px}
 .unread-dot{width:7px;height:7px;background:var(--sky);border-radius:50%;flex-shrink:0;margin-top:6px}
-
-/* DIRECT MESSAGES */
 .dm-layout{display:grid;grid-template-columns:280px 1fr;gap:0;height:calc(100vh - 96px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;background:var(--card)}
 .dm-sidebar{border-right:1px solid var(--line);overflow-y:auto}
 .dm-sidebar-header{padding:16px;border-bottom:1px solid var(--line);font-size:.9rem;font-weight:900;letter-spacing:-.02em}
@@ -573,56 +616,47 @@ button{cursor:pointer}
 .dm-empty p{font-size:.85rem;font-weight:600}
 .new-dm-btn{margin:12px;padding:9px;width:calc(100% - 24px);border:1px dashed var(--line2);background:transparent;border-radius:9px;color:var(--muted);font-size:.78rem;font-weight:700;transition:all .2s}
 .new-dm-btn:hover{border-color:var(--sky);color:var(--sky)}
-
-/* NETWORK INVITE PANEL */
 .invite-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:20px;margin-bottom:14px}
 .invite-title{font-size:.88rem;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
 .invite-sub{font-size:.78rem;color:var(--muted);margin-bottom:14px;line-height:1.5}
 .invite-btns{display:flex;gap:8px;flex-wrap:wrap}
 .invite-btn{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:1px solid var(--line2);background:transparent;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s}
 .invite-btn:hover{transform:translateY(-1px)}
-.invite-btn.wa{border-color:rgba(37,211,102,.35);color:#25d366}
-.invite-btn.wa:hover{background:rgba(37,211,102,.08)}
-.invite-btn.ig{border-color:rgba(228,64,95,.35);color:#e4405f}
-.invite-btn.ig:hover{background:rgba(228,64,95,.08)}
-.invite-btn.li{border-color:rgba(0,119,181,.35);color:#0077b5}
-.invite-btn.li:hover{background:rgba(0,119,181,.08)}
-.invite-btn.tw{border-color:rgba(29,161,242,.35);color:#1da1f2}
-.invite-btn.tw:hover{background:rgba(29,161,242,.08)}
-.invite-btn.cp{border-color:var(--line2);color:var(--muted)}
-.invite-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
-
-/* AI CHAT */
+.invite-btn.wa{border-color:rgba(37,211,102,.35);color:#25d366}.invite-btn.wa:hover{background:rgba(37,211,102,.08)}
+.invite-btn.ig{border-color:rgba(228,64,95,.35);color:#e4405f}.invite-btn.ig:hover{background:rgba(228,64,95,.08)}
+.invite-btn.li{border-color:rgba(0,119,181,.35);color:#0077b5}.invite-btn.li:hover{background:rgba(0,119,181,.08)}
+.invite-btn.tw{border-color:rgba(29,161,242,.35);color:#1da1f2}.invite-btn.tw:hover{background:rgba(29,161,242,.08)}
+.invite-btn.cp{border-color:var(--line2);color:var(--muted)}.invite-btn.cp:hover{border-color:var(--sky);color:var(--sky)}
+/* TARA AI CHAT */
 .ai-chat-container{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 96px)}
-.ai-chat-header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-shrink:0}
-.ai-chat-icon{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--violet),var(--mint));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
-.ai-chat-title{font-size:.95rem;font-weight:900;letter-spacing:-.02em}
-.ai-chat-sub{font-size:.75rem;color:var(--muted)}
+.ai-chat-header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(0,196,140,.06),rgba(124,58,237,.06))}
+.ai-chat-icon{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--violet));display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;box-shadow:0 0 0 3px rgba(0,196,140,.15)}
+.ai-chat-title{font-size:1rem;font-weight:900;letter-spacing:-.03em}
+.ai-chat-sub{font-size:.74rem;color:var(--muted);margin-top:1px}
+.tara-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(0,196,140,.1);border:1px solid rgba(0,196,140,.25);color:var(--mint);padding:2px 9px;border-radius:999px;font-size:.68rem;font-weight:800;margin-left:8px}
 .ai-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
 .ai-msg{display:flex;gap:11px;max-width:85%;animation:slideUp .3s ease both}
 .ai-msg.user{flex-direction:row-reverse;align-self:flex-end}
 .ai-msg-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0}
-.ai-msg.assistant .ai-msg-icon{background:linear-gradient(135deg,var(--violet),var(--mint))}
+.ai-msg.assistant .ai-msg-icon{background:linear-gradient(135deg,var(--mint),var(--violet))}
 .ai-msg.user .ai-msg-icon{background:linear-gradient(135deg,var(--sky),var(--violet))}
 .ai-bubble{border-radius:14px;padding:11px 15px;font-size:.84rem;line-height:1.75}
 .ai-msg.assistant .ai-bubble{background:var(--ink3);border:1px solid var(--line)}
 .ai-msg.user .ai-bubble{background:rgba(26,108,255,.15);border:1px solid rgba(26,108,255,.25)}
 .ai-chat-input-area{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0}
 .ai-chat-input{flex:1;background:var(--ink3);border:1px solid var(--line);border-radius:11px;padding:11px 14px;color:var(--text);font-size:.84rem;outline:none;resize:none;transition:border-color .2s;min-height:44px;max-height:120px;line-height:1.6}
-.ai-chat-input:focus{border-color:var(--sky)}
-.ai-send-btn{padding:11px 18px;background:var(--sky);border:none;border-radius:11px;color:#fff;font-size:.84rem;font-weight:800;transition:all .2s;align-self:flex-end}
-.ai-send-btn:hover{background:var(--sky2)}
-.ai-send-btn:disabled{opacity:.4;cursor:not-allowed}
-.ai-suggestions{display:flex;gap:7px;flex-wrap:wrap;padding:0 18px 12px}
-.ai-sug-btn{padding:6px 13px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.75rem;font-weight:700;transition:all .2s;cursor:pointer}
-.ai-sug-btn:hover{border-color:var(--sky);color:var(--sky);background:rgba(26,108,255,.05)}
+.ai-chat-input:focus{border-color:var(--mint)}
+.ai-send-btn{padding:11px 18px;background:linear-gradient(135deg,var(--mint),var(--violet));border:none;border-radius:11px;color:#fff;font-size:.84rem;font-weight:800;transition:all .2s;align-self:flex-end}
+.ai-send-btn:hover{opacity:.88;transform:translateY(-1px)}
+.ai-send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.ai-suggestions{display:flex;gap:7px;flex-wrap:wrap;padding:10px 18px 4px}
+.ai-sug-btn{padding:6px 13px;border-radius:999px;border:1px solid rgba(0,196,140,.25);background:rgba(0,196,140,.05);color:var(--mint);font-size:.74rem;font-weight:700;transition:all .2s;cursor:pointer}
+.ai-sug-btn:hover{background:rgba(0,196,140,.12);border-color:var(--mint)}
 .typing-indicator{display:flex;gap:4px;padding:11px 15px;background:var(--ink3);border:1px solid var(--line);border-radius:14px;width:fit-content}
-.typing-dot{width:6px;height:6px;background:var(--muted);border-radius:50%;animation:bounce .9s infinite}
+.typing-dot{width:6px;height:6px;background:var(--mint);border-radius:50%;animation:bounce .9s infinite}
 .typing-dot:nth-child(2){animation-delay:.15s}
 .typing-dot:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
-
-/* NETWORK */
 .people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:11px}
 .people-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:20px 16px;text-align:center;transition:all .2s}
 .people-card:hover{border-color:var(--line2);transform:translateY(-2px)}
@@ -639,8 +673,6 @@ button{cursor:pointer}
 .suggest-role{color:var(--muted);font-size:.71rem;font-weight:500}
 .s-connect-btn{padding:5px 11px;border-radius:999px;border:1px solid rgba(26,108,255,.3);background:transparent;color:var(--sky);font-size:.71rem;font-weight:800;transition:all .2s}
 .s-connect-btn:hover{background:var(--sky);color:#fff}
-
-/* MODALS */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:20px}
 .modal-bg.show{display:flex}
 .modal{background:var(--ink2);border:1px solid var(--line2);border-radius:22px;padding:26px;width:100%;max-width:480px;max-height:86vh;overflow-y:auto;position:relative;animation:slideUp .3s cubic-bezier(.16,1,.3,1) both}
@@ -657,8 +689,6 @@ button{cursor:pointer}
 .modal-save:hover{background:var(--sky2);transform:translateY(-1px)}
 .modal-save.amber{background:var(--amber)}
 .modal-save.amber:hover{background:#d97706}
-
-/* MISC */
 .tag{display:inline-block;padding:3px 9px;border-radius:6px;font-size:.7rem;font-weight:800}
 .tag-blue{background:rgba(26,108,255,.1);border:1px solid rgba(26,108,255,.2);color:var(--sky)}
 .tag-green{background:rgba(0,196,140,.1);border:1px solid rgba(0,196,140,.2);color:var(--mint)}
@@ -699,15 +729,11 @@ button{cursor:pointer}
       <button class="auth-tab" onclick="showAuthTab('register')">Create account</button>
     </div>
     <div class="auth-err" id="authErr"></div>
-
-    <!-- LOGIN -->
     <div id="loginForm">
       <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@company.com"/></div>
       <div class="field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••"/></div>
       <button class="auth-btn" onclick="doLogin()">Sign in &rarr;</button>
     </div>
-
-    <!-- REGISTER -->
     <div id="registerForm" style="display:none">
       <div class="account-type-toggle">
         <button class="atype-btn active" id="atype-pro" onclick="selectAccountType('professional')">
@@ -728,8 +754,6 @@ button{cursor:pointer}
 
 <!-- APP SHELL -->
 <div class="app" id="appShell">
-
-  <!-- TOPBAR -->
   <div class="topbar">
     <div class="topbar-logo">gath<span>R</span></div>
     <div class="topbar-search">
@@ -745,7 +769,7 @@ button{cursor:pointer}
       <button class="tnav" onclick="showPage('jobs')">Jobs</button>
       <button class="tnav" onclick="showPage('messages')">Messages<span class="nav-badge" id="msgBadge" style="display:none"></span></button>
       <button class="tnav" onclick="showPage('notifications')">Alerts<span class="nav-badge" id="notifBadge" style="display:none"></span></button>
-      <button class="tnav" onclick="showPage('ai')">&#10022; AI</button>
+      <button class="tnav" onclick="showPage('ai')" style="color:var(--mint)">&#10022; TARA</button>
       <button class="tnav" onclick="showPage('network')">Network</button>
     </div>
     <div class="topbar-user" onclick="showPage('profile')">
@@ -755,7 +779,6 @@ button{cursor:pointer}
     <button class="logout-btn" onclick="doLogout()">Sign out</button>
   </div>
 
-  <!-- Company post-job FAB -->
   <button class="post-job-fab" id="postJobFab" onclick="openPostJobModal()" title="Post a new job">&#43;</button>
 
   <!-- FEED PAGE -->
@@ -777,7 +800,7 @@ button{cursor:pointer}
             <div class="s-link" onclick="showPage('profile')"><span class="icon">&#9678;</span>Profile</div>
             <div class="s-link" onclick="showPage('analytics')"><span class="icon">&#128202;</span>Analytics</div>
             <div class="s-link" onclick="showPage('jobs')"><span class="icon">&#128188;</span>Job Board</div>
-            <div class="s-link" onclick="showPage('ai')"><span class="icon">&#10022;</span>AI Assistant</div>
+            <div class="s-link" onclick="showPage('ai')"><span class="icon">&#10022;</span>TARA AI</div>
             <div class="s-link" onclick="showPage('messages')"><span class="icon">&#128172;</span>Messages</div>
           </div>
         </div>
@@ -940,32 +963,37 @@ button{cursor:pointer}
     </div>
   </div>
 
-  <!-- AI CHAT PAGE -->
+  <!-- TARA AI PAGE -->
   <div class="page" id="page-ai">
     <div class="main-layout" style="grid-template-columns:1fr">
       <div class="ai-chat-container">
         <div class="ai-chat-header">
           <div class="ai-chat-icon">&#10022;</div>
           <div>
-            <div class="ai-chat-title">gathR AI Assistant</div>
-            <div class="ai-chat-sub">Career coach, resume advisor &amp; networking guide</div>
+            <div style="display:flex;align-items:center">
+              <div class="ai-chat-title">TARA</div>
+              <span class="tara-badge">Career Assistant</span>
+            </div>
+            <div class="ai-chat-sub">Resume &middot; Jobs &middot; Interviews &middot; Skills &middot; Networking</div>
           </div>
-          <button onclick="clearAIChat()" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.75rem;font-weight:700;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--sky)';this.style.color='var(--sky)'" onmouseout="this.style.borderColor='var(--line2)';this.style.color='var(--muted)'">Clear chat</button>
+          <button onclick="clearAIChat()" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.75rem;font-weight:700;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--mint)';this.style.color='var(--mint)'" onmouseout="this.style.borderColor='var(--line2)';this.style.color='var(--muted)'">Clear chat</button>
         </div>
         <div class="ai-messages" id="aiMessages">
           <div class="ai-msg assistant">
             <div class="ai-msg-icon">&#10022;</div>
-            <div class="ai-bubble">Hi! I'm your gathR AI assistant. I can help you with career advice, resume tips, interview prep, networking strategies, and more. What would you like to discuss?</div>
+            <div class="ai-bubble">Hi! 👋 I'm <strong>TARA</strong>, your gathR career assistant. I can help you with <strong>resume analysis</strong>, <strong>job search strategy</strong>, <strong>interview prep</strong>, <strong>salary negotiation</strong>, <strong>skill building</strong>, and <strong>networking</strong>. What would you like to work on today?</div>
           </div>
         </div>
         <div class="ai-suggestions" id="aiSuggestions">
-          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How do I improve my profile?</button>
-          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Tips for a career change?</button>
-          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How to ace a tech interview?</button>
-          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Write a cold outreach message</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Analyse my resume for ATS</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How do I find the right job?</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Prep me for a tech interview</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">How do I negotiate my salary?</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">What skills should I learn next?</button>
+          <button class="ai-sug-btn" onclick="sendAISuggestion(this)">Write a LinkedIn outreach message</button>
         </div>
         <div class="ai-chat-input-area">
-          <textarea class="ai-chat-input" id="aiInput" placeholder="Ask about your career, resume, interviews..." rows="1" onkeydown="aiKeydown(event)"></textarea>
+          <textarea class="ai-chat-input" id="aiInput" placeholder="Ask TARA about your resume, jobs, interviews, skills..." rows="1" onkeydown="aiKeydown(event)"></textarea>
           <button class="ai-send-btn" id="aiSendBtn" onclick="sendAIMessage()">Send</button>
         </div>
       </div>
@@ -1000,7 +1028,6 @@ button{cursor:pointer}
             <button class="invite-btn cp" onclick="copyInviteLink()">&#128279; Copy link</button>
           </div>
         </div>
-
         <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:22px">
           <div class="section-title" style="margin-bottom:16px">Grow your network</div>
           <div id="networkList"><div class="loading-wrap"><div class="spinner"></div><p>Loading...</p></div></div>
@@ -1009,8 +1036,7 @@ button{cursor:pointer}
       <div></div>
     </div>
   </div>
-
-</div><!-- end appShell -->
+</div>
 
 <!-- EDIT PROFILE MODAL -->
 <div class="modal-bg" id="editProfileModal">
@@ -1041,33 +1067,22 @@ button{cursor:pointer}
     <div class="mfield"><label>Job Title</label><input id="pj_title" placeholder="e.g. Senior React Developer"/></div>
     <div class="mfield"><label>Company Name</label><input id="pj_company" placeholder="Your company name"/></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="mfield">
-        <label>Location</label>
+      <div class="mfield"><label>Location</label>
         <select id="pj_location">
-          <option>Remote</option>
-          <option>Hyderabad</option>
-          <option>Bangalore</option>
-          <option>Mumbai</option>
-          <option>Delhi</option>
-          <option>Chennai</option>
-          <option>Pune</option>
-          <option>On-site</option>
-          <option>Hybrid</option>
+          <option>Remote</option><option>Hyderabad</option><option>Bangalore</option>
+          <option>Mumbai</option><option>Delhi</option><option>Chennai</option>
+          <option>Pune</option><option>On-site</option><option>Hybrid</option>
         </select>
       </div>
-      <div class="mfield">
-        <label>Job Type</label>
+      <div class="mfield"><label>Job Type</label>
         <select id="pj_type">
-          <option>Full-time</option>
-          <option>Part-time</option>
-          <option>Contract</option>
-          <option>Internship</option>
-          <option>Freelance</option>
+          <option>Full-time</option><option>Part-time</option><option>Contract</option>
+          <option>Internship</option><option>Freelance</option>
         </select>
       </div>
     </div>
     <div class="mfield"><label>Salary / CTC Range</label><input id="pj_salary" placeholder="e.g. &#8377;12-20 LPA or $80-100k"/></div>
-    <div class="mfield"><label>Job Description</label><textarea id="pj_desc" placeholder="Describe the role, responsibilities, what you're building..."></textarea></div>
+    <div class="mfield"><label>Job Description</label><textarea id="pj_desc" placeholder="Describe the role, responsibilities..."></textarea></div>
     <div class="mfield"><label>Required Skills (comma separated)</label><input id="pj_skills" placeholder="Python, React, SQL, Docker..."/></div>
     <button class="modal-save amber" onclick="submitJobPosting()">Post Job Opening &rarr;</button>
   </div>
@@ -1085,27 +1100,17 @@ button{cursor:pointer}
 <div class="toast" id="toast"></div>
 
 <script>
-let ME = null;
-let attachedFile = null;
-let avatarBase64 = null;
-let aiChatHistory = [];
-let appliedJobs = new Set();
-let currentDMUser = null;
-let allUsers = [];
-let allPosts = [];
-let allCompanyJobs = [];
+let ME = null, attachedFile = null, avatarBase64 = null;
+let aiChatHistory = [], appliedJobs = new Set();
+let currentDMUser = null, allUsers = [], allPosts = [], allCompanyJobs = [];
 let selectedAccountType = 'professional';
 
 window.addEventListener('DOMContentLoaded', checkSession);
 
 async function checkSession() {
-  try {
-    const r = await fetch('/api/me');
-    if (r.ok) { ME = await r.json(); showApp(); }
-  } catch(e) {}
+  try { const r = await fetch('/api/me'); if (r.ok) { ME = await r.json(); showApp(); } } catch(e) {}
 }
 
-// AUTH
 function selectAccountType(type) {
   selectedAccountType = type;
   document.getElementById('atype-pro').classList.toggle('active', type==='professional');
@@ -1166,18 +1171,13 @@ function showAuthErr(msg) {
   el.textContent = msg; el.classList.add('show');
 }
 
-// APP INIT
 async function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('appShell').classList.add('show');
   await loadUsers();
   refreshUserUI();
-  loadFeed();
-  loadSuggestions();
-  loadSavedAnalysis();
-  loadNotifBadge();
-  loadMsgBadge();
-  loadAppliedJobs();
+  loadFeed(); loadSuggestions(); loadSavedAnalysis();
+  loadNotifBadge(); loadMsgBadge(); loadAppliedJobs();
   const isComp = ME && ME.account_type === 'company';
   document.getElementById('postJobFab').classList.toggle('show', isComp);
   document.getElementById('postJobBtn').style.display = isComp ? 'block' : 'none';
@@ -1211,7 +1211,7 @@ function refreshUserUI() {
   setText('profName', ME.name);
   const badge = document.getElementById('profTypeBadge');
   if (badge) badge.innerHTML = isco ? '<span class="company-badge">&#127970; Company Account</span>' : '';
-  setText('profHeadline', ME.headline||(isco ? 'Company on gathR' : 'Professional on gathR'));
+  setText('profHeadline', ME.headline||(isco?'Company on gathR':'Professional on gathR'));
   setText('profLocation', ME.location ? '\u25CE '+ME.location : '');
   setText('profAbout', ME.about||'');
   const skills = JSON.parse(ME.skills||'[]');
@@ -1224,7 +1224,6 @@ function renderSkillTags(cid, skills) {
   el.innerHTML = skills.map(s=>'<span class="skill-tag">'+s+'</span>').join('');
 }
 
-// PAGES
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.tnav').forEach(b=>b.classList.remove('active'));
@@ -1240,15 +1239,13 @@ function showPage(page) {
   if (page==='ai') loadAIChatHistory();
 }
 
-// SEARCH
 async function doSearch(q) {
   const sr = document.getElementById('searchResults');
   if (!q || q.length < 2) { sr.classList.remove('show'); return; }
   const [postsR, usersR] = await Promise.all([fetch('/api/posts'), fetch('/api/users')]);
-  const posts = await postsR.json();
-  const users = await usersR.json();
+  const posts = await postsR.json(), users = await usersR.json();
   const ql = q.toLowerCase();
-  const matchedUsers = users.filter(u => u.name.toLowerCase().includes(ql) || (u.headline||'').toLowerCase().includes(ql)).slice(0,3);
+  const matchedUsers = users.filter(u => u.name.toLowerCase().includes(ql)||(u.headline||'').toLowerCase().includes(ql)).slice(0,3);
   const matchedPosts = posts.filter(p => p.content.toLowerCase().includes(ql)).slice(0,3);
   if (!matchedUsers.length && !matchedPosts.length) {
     sr.innerHTML='<div style="padding:12px 14px;color:var(--muted);font-size:.82rem;font-weight:600">No results found</div>';
@@ -1275,7 +1272,6 @@ function hideSearch() { document.getElementById('searchResults').classList.remov
 function goToUser(id) { hideSearch(); showPage('network'); }
 function goToPost(id) { hideSearch(); showPage('feed'); setTimeout(function(){ var el=document.getElementById('post-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },200); }
 
-// FEED
 async function loadFeed() {
   const r = await fetch('/api/posts');
   allPosts = await r.json();
@@ -1305,88 +1301,55 @@ function renderPost(p) {
     '<button class="p-action" onclick="editPost('+p.id+',\''+escAttr(p.content)+'\')">&#9999; Edit</button>' +
     '<button class="p-action" style="color:var(--rose)" onclick="deletePost('+p.id+')">&#128465; Delete</button>' : '';
   return '<div class="post-card" id="post-'+p.id+'">' +
-    '<div class="post-header">' +
-      '<div class="avatar">'+ini+'</div>' +
-      '<div class="post-meta">' +
-        '<div class="post-author">'+(p.author_name||'User')+'</div>' +
-        '<div class="post-headline">'+(p.author_headline||'')+'</div>' +
-        '<div class="post-time">'+timeAgo(p.created_at)+'</div>' +
-      '</div></div>' +
+    '<div class="post-header"><div class="avatar">'+ini+'</div>' +
+    '<div class="post-meta"><div class="post-author">'+(p.author_name||'User')+'</div>' +
+    '<div class="post-headline">'+(p.author_headline||'')+'</div>' +
+    '<div class="post-time">'+timeAgo(p.created_at)+'</div></div></div>' +
     '<div class="post-content" id="post-content-'+p.id+'">'+escHtml(p.content)+'</div>' +
     fileHtml +
     '<div class="post-actions">' +
-      '<button class="p-action '+(liked?'liked':'')+'" onclick="toggleLike('+p.id+')">&#128077; '+(likes.length>0?likes.length:'')+' Like</button>' +
-      '<button class="p-action" onclick="toggleComments('+p.id+')">&#128172; Comment</button>' +
-      '<button class="p-action" onclick="toggleSharePanel('+p.id+')">&#8599; Share</button>' +
-      ownerActions +
-    '</div>' +
+    '<button class="p-action '+(liked?'liked':'')+'" onclick="toggleLike('+p.id+')">&#128077; '+(likes.length>0?likes.length:'')+' Like</button>' +
+    '<button class="p-action" onclick="toggleComments('+p.id+')">&#128172; Comment</button>' +
+    '<button class="p-action" onclick="toggleSharePanel('+p.id+')">&#8599; Share</button>' +
+    ownerActions+'</div>' +
     '<div id="share-panel-'+p.id+'" class="share-panel">' +
-      '<div class="share-title">Share this post</div>' +
-      '<div class="share-btns">' +
-        '<button class="share-btn wa" onclick="sharePostVia('+p.id+',\'whatsapp\')">WhatsApp</button>' +
-        '<button class="share-btn ig" onclick="sharePostVia('+p.id+',\'instagram\')">Instagram</button>' +
-        '<button class="share-btn li" onclick="sharePostVia('+p.id+',\'linkedin\')">LinkedIn</button>' +
-        '<button class="share-btn tw" onclick="sharePostVia('+p.id+',\'twitter\')">X / Twitter</button>' +
-        '<button class="share-btn cp" onclick="copyPostLink('+p.id+')">&#128279; Copy link</button>' +
-      '</div></div>' +
+    '<div class="share-title">Share this post</div><div class="share-btns">' +
+    '<button class="share-btn wa" onclick="sharePostVia('+p.id+',\'whatsapp\')">WhatsApp</button>' +
+    '<button class="share-btn ig" onclick="sharePostVia('+p.id+',\'instagram\')">Instagram</button>' +
+    '<button class="share-btn li" onclick="sharePostVia('+p.id+',\'linkedin\')">LinkedIn</button>' +
+    '<button class="share-btn tw" onclick="sharePostVia('+p.id+',\'twitter\')">X / Twitter</button>' +
+    '<button class="share-btn cp" onclick="copyPostLink('+p.id+')">&#128279; Copy link</button>' +
+    '</div></div>' +
     '<div id="comments-section-'+p.id+'" style="display:none">' +
-      '<div class="comments-area" id="comments-list-'+p.id+'"></div>' +
-      '<div class="comment-input-area">' +
-        '<input type="text" id="comment-input-'+p.id+'" placeholder="Write a comment..." onkeydown="if(event.key===\'Enter\')submitComment('+p.id+')"/>' +
-        '<button onclick="submitComment('+p.id+')">Post</button>' +
-      '</div></div>' +
-  '</div>';
+    '<div class="comments-area" id="comments-list-'+p.id+'"></div>' +
+    '<div class="comment-input-area">' +
+    '<input type="text" id="comment-input-'+p.id+'" placeholder="Write a comment..." onkeydown="if(event.key===\'Enter\')submitComment('+p.id+')"/>' +
+    '<button onclick="submitComment('+p.id+')">Post</button></div></div></div>';
 }
 
-function toggleSharePanel(postId) {
-  var panel = document.getElementById('share-panel-'+postId);
-  panel.classList.toggle('show');
-}
-function getPostUrl(postId) { return window.location.origin + '/#post-' + postId; }
-function getPostText(postId) {
-  var el = document.getElementById('post-content-'+postId);
-  return el ? el.textContent.trim().slice(0,120) : 'Check this out on gathR!';
-}
+function toggleSharePanel(postId) { document.getElementById('share-panel-'+postId).classList.toggle('show'); }
+function getPostUrl(postId) { return window.location.origin+'/#post-'+postId; }
+function getPostText(postId) { var el=document.getElementById('post-content-'+postId); return el?el.textContent.trim().slice(0,120):'Check this out on gathR!'; }
 function sharePostVia(postId, platform) {
-  var url = encodeURIComponent(getPostUrl(postId));
-  var text = encodeURIComponent(getPostText(postId) + ' \u2014 via gathR');
-  var links = {
-    whatsapp: 'https://wa.me/?text='+text+'%20'+url,
-    linkedin: 'https://www.linkedin.com/sharing/share-offsite/?url='+url,
-    twitter: 'https://twitter.com/intent/tweet?text='+text+'&url='+url,
-  };
-  if (platform === 'instagram') {
-    navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied! Paste it in Instagram \uD83D\uDCF8');});
-    return;
-  }
-  if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
+  var url=encodeURIComponent(getPostUrl(postId));
+  var text=encodeURIComponent(getPostText(postId)+' \u2014 via gathR');
+  var links={whatsapp:'https://wa.me/?text='+text+'%20'+url,linkedin:'https://www.linkedin.com/sharing/share-offsite/?url='+url,twitter:'https://twitter.com/intent/tweet?text='+text+'&url='+url};
+  if (platform==='instagram'){navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied! Paste it in Instagram');});return;}
+  if (links[platform]) window.open(links[platform],'_blank','width=600,height=500');
 }
-function copyPostLink(postId) {
-  navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied! \uD83D\uDD17');});
-}
-
+function copyPostLink(postId){navigator.clipboard.writeText(getPostUrl(postId)).then(function(){showToast('Link copied!');});}
 function inviteVia(platform) {
-  var url = encodeURIComponent(window.location.origin);
-  var text = encodeURIComponent('Join me on gathR \u2014 the professional network for ambitious careers! ' + window.location.origin);
-  var links = {
-    whatsapp: 'https://wa.me/?text='+text,
-    linkedin: 'https://www.linkedin.com/sharing/share-offsite/?url='+url,
-    twitter: 'https://twitter.com/intent/tweet?text='+text,
-  };
-  if (platform === 'instagram') {
-    navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Link copied! Open Instagram and paste in your bio or story \uD83D\uDCF8');});
-    return;
-  }
-  if (links[platform]) window.open(links[platform], '_blank', 'width=600,height=500');
+  var url=encodeURIComponent(window.location.origin);
+  var text=encodeURIComponent('Join me on gathR \u2014 the professional network! '+window.location.origin);
+  var links={whatsapp:'https://wa.me/?text='+text,linkedin:'https://www.linkedin.com/sharing/share-offsite/?url='+url,twitter:'https://twitter.com/intent/tweet?text='+text};
+  if (platform==='instagram'){navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Link copied! Paste in Instagram');});return;}
+  if (links[platform]) window.open(links[platform],'_blank','width=600,height=500');
 }
-function copyInviteLink() {
-  navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Invite link copied! \uD83D\uDD17');});
-}
+function copyInviteLink(){navigator.clipboard.writeText(window.location.origin).then(function(){showToast('Invite link copied!');});}
 
-// COMMENTS
 async function toggleComments(postId) {
   var section = document.getElementById('comments-section-'+postId);
-  if (section.style.display !== 'none') { section.style.display='none'; return; }
+  if (section.style.display!=='none'){section.style.display='none';return;}
   section.style.display='block';
   await loadComments(postId);
   document.getElementById('comment-input-'+postId).focus();
@@ -1395,618 +1358,353 @@ async function loadComments(postId) {
   const r = await fetch('/api/posts/'+postId+'/comments');
   const comments = await r.json();
   const list = document.getElementById('comments-list-'+postId);
-  if (!comments.length) { list.innerHTML='<div style="padding:10px 14px;color:var(--muted);font-size:.8rem;font-weight:600">No comments yet</div>'; return; }
-  list.innerHTML = comments.map(function(c) {
-    var ini = (c.author_name||'U').split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
-    return '<div class="comment-item">' +
-      '<div class="avatar" style="width:28px;height:28px;font-size:.65rem;flex-shrink:0">'+ini+'</div>' +
-      '<div class="comment-body">' +
-        '<span class="comment-author">'+c.author_name+'</span>' +
-        '<span class="comment-time">'+timeAgo(c.created_at)+'</span>' +
-        '<div class="comment-text">'+escHtml(c.content)+'</div>' +
-      '</div></div>';
+  if (!comments.length){list.innerHTML='<div style="padding:10px 14px;color:var(--muted);font-size:.8rem;font-weight:600">No comments yet</div>';return;}
+  list.innerHTML = comments.map(function(c){
+    var ini=(c.author_name||'U').split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div class="comment-item"><div class="avatar" style="width:28px;height:28px;font-size:.65rem;flex-shrink:0">'+ini+'</div>' +
+      '<div class="comment-body"><span class="comment-author">'+c.author_name+'</span><span class="comment-time">'+timeAgo(c.created_at)+'</span>' +
+      '<div class="comment-text">'+escHtml(c.content)+'</div></div></div>';
   }).join('');
 }
 async function submitComment(postId) {
-  var input = document.getElementById('comment-input-'+postId);
-  var val = input.value.trim();
-  if (!val) return;
-  const r = await fetch('/api/posts/'+postId+'/comments', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  input.value=''; await loadComments(postId); showToast('Comment posted! \u2713');
+  var input=document.getElementById('comment-input-'+postId);
+  var val=input.value.trim(); if(!val)return;
+  const r=await fetch('/api/posts/'+postId+'/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
+  const d=await r.json();
+  if(d.error){showToast('Error: '+d.error,true);return;}
+  input.value=''; await loadComments(postId); showToast('Comment posted!');
 }
-
-async function toggleLike(postId) {
-  await fetch('/api/posts/'+postId+'/like', {method:'POST'});
-  loadFeed();
-}
-
+async function toggleLike(postId){await fetch('/api/posts/'+postId+'/like',{method:'POST'});loadFeed();}
 async function submitPost() {
-  const text = document.getElementById('postText').value.trim();
-  if (!text && !attachedFile) return;
-  const btn = document.getElementById('postBtn');
-  btn.disabled=true; btn.textContent='Posting...';
-  const fd = new FormData();
-  fd.append('content', text||'');
-  if (attachedFile) fd.append('file', attachedFile);
-  const r = await fetch('/api/posts',{method:'POST',body:fd});
-  const d = await r.json();
-  btn.disabled=false; btn.textContent='Post';
-  if (d.error) { showToast('Error: '+d.error, true); return; }
+  const text=document.getElementById('postText').value.trim();
+  if(!text&&!attachedFile)return;
+  const btn=document.getElementById('postBtn');
+  btn.disabled=true;btn.textContent='Posting...';
+  const fd=new FormData();fd.append('content',text||'');
+  if(attachedFile)fd.append('file',attachedFile);
+  const r=await fetch('/api/posts',{method:'POST',body:fd});
+  const d=await r.json();
+  btn.disabled=false;btn.textContent='Post';
+  if(d.error){showToast('Error: '+d.error,true);return;}
   document.getElementById('postText').value='';
-  clearAttach(); showToast('Post shared! \u2713'); loadFeed();
+  clearAttach();showToast('Post shared!');loadFeed();
 }
-function handleAttach(input) {
-  if (!input.files[0]) return;
-  attachedFile = input.files[0];
-  document.getElementById('attachName').textContent = attachedFile.name;
-  document.getElementById('attachPreview').classList.add('show');
+function handleAttach(input){if(!input.files[0])return;attachedFile=input.files[0];document.getElementById('attachName').textContent=attachedFile.name;document.getElementById('attachPreview').classList.add('show');}
+function clearAttach(){attachedFile=null;document.getElementById('attachFile').value='';document.getElementById('attachPreview').classList.remove('show');}
+function addEmoji(){var e=['\uD83C\uDF89','\uD83D\uDE80','\uD83D\uDCA1','\uD83D\uDD25','\u2705','\uD83D\uDC4F','\uD83D\uDCBC','\uD83D\uDCCA','\u26A1','\uD83C\uDF1F'];document.getElementById('postText').value+=' '+e[Math.floor(Math.random()*e.length)];}
+async function deletePost(postId){if(!confirm('Delete this post?'))return;const r=await fetch('/api/posts/'+postId,{method:'DELETE'});const d=await r.json();if(d.error){showToast('Error: '+d.error,true);return;}showToast('Post deleted');loadFeed();}
+function editPost(postId,currentContent){
+  var el=document.getElementById('post-content-'+postId);
+  el.innerHTML='<textarea id="edit-input-'+postId+'" style="width:100%;background:var(--ink3);border:1px solid var(--sky);border-radius:8px;padding:10px;color:var(--text);font-size:.86rem;resize:none;outline:none;min-height:78px;line-height:1.6">'+currentContent+'</textarea>' +
+    '<div style="display:flex;gap:7px;margin-top:7px"><button onclick="saveEdit('+postId+')" style="padding:6px 14px;background:var(--sky);border:none;border-radius:7px;color:#fff;font-size:.77rem;font-weight:800;cursor:pointer">Save</button>' +
+    '<button onclick="cancelEdit('+postId+',\''+escAttr(currentContent)+'\')" style="padding:6px 14px;background:var(--ink3);border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:.77rem;font-weight:800;cursor:pointer">Cancel</button></div>';
 }
-function clearAttach() {
-  attachedFile = null;
-  document.getElementById('attachFile').value='';
-  document.getElementById('attachPreview').classList.remove('show');
-}
-function addEmoji() {
-  var e = ['\uD83C\uDF89','\uD83D\uDE80','\uD83D\uDCA1','\uD83D\uDD25','\u2705','\uD83D\uDC4F','\uD83D\uDCBC','\uD83D\uDCCA','\u26A1','\uD83C\uDF1F'];
-  document.getElementById('postText').value += ' '+e[Math.floor(Math.random()*e.length)];
-}
-async function deletePost(postId) {
-  if (!confirm('Delete this post?')) return;
-  const r = await fetch('/api/posts/'+postId,{method:'DELETE'});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Post deleted'); loadFeed();
-}
-function editPost(postId, currentContent) {
-  var el = document.getElementById('post-content-'+postId);
-  el.innerHTML = '<textarea id="edit-input-'+postId+'" style="width:100%;background:var(--ink3);border:1px solid var(--sky);border-radius:8px;padding:10px;color:var(--text);font-size:.86rem;resize:none;outline:none;min-height:78px;line-height:1.6">'+currentContent+'</textarea>' +
-    '<div style="display:flex;gap:7px;margin-top:7px">' +
-      '<button onclick="saveEdit('+postId+')" style="padding:6px 14px;background:var(--sky);border:none;border-radius:7px;color:#fff;font-size:.77rem;font-weight:800;cursor:pointer">Save</button>' +
-      '<button onclick="cancelEdit('+postId+',\''+escAttr(currentContent)+'\')" style="padding:6px 14px;background:var(--ink3);border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:.77rem;font-weight:800;cursor:pointer">Cancel</button>' +
-    '</div>';
-}
-async function saveEdit(postId) {
-  var val = document.getElementById('edit-input-'+postId).value.trim();
-  if (!val) return;
-  const r = await fetch('/api/posts/'+postId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Post updated! \u2713'); loadFeed();
-}
-function cancelEdit(postId, orig) {
-  document.getElementById('post-content-'+postId).innerHTML = escHtml(orig);
-}
-async function loadProfilePosts() {
-  const r = await fetch('/api/posts?mine=1');
-  const posts = await r.json();
-  const c = document.getElementById('profilePosts');
-  if (!posts.length) { c.innerHTML='<div class="empty-state"><span class="icon">&#10022;</span><h3>No posts yet</h3><p>Share your first update!</p></div>'; return; }
-  c.innerHTML = posts.map(renderPost).join('');
-}
+async function saveEdit(postId){var val=document.getElementById('edit-input-'+postId).value.trim();if(!val)return;const r=await fetch('/api/posts/'+postId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:val})});const d=await r.json();if(d.error){showToast('Error: '+d.error,true);return;}showToast('Post updated!');loadFeed();}
+function cancelEdit(postId,orig){document.getElementById('post-content-'+postId).innerHTML=escHtml(orig);}
+async function loadProfilePosts(){const r=await fetch('/api/posts?mine=1');const posts=await r.json();const c=document.getElementById('profilePosts');if(!posts.length){c.innerHTML='<div class="empty-state"><span class="icon">&#10022;</span><h3>No posts yet</h3><p>Share your first update!</p></div>';return;}c.innerHTML=posts.map(renderPost).join('');}
 
-// ANALYTICS
 async function loadAnalytics() {
   const [postsR, usersR] = await Promise.all([fetch('/api/posts'), fetch('/api/users')]);
-  const posts = await postsR.json();
-  const users = await usersR.json();
-  const myPosts = posts.filter(function(p){return p.user_id===ME.id;});
-  const totalLikes = myPosts.reduce(function(s,p){return s+JSON.parse(p.likes||'[]').length;},0);
-  const skills = JSON.parse(ME.skills||'[]');
-  const weeks = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const barData = weeks.map(function(){return Math.floor(Math.random()*90)+10;});
-  const maxBar = Math.max.apply(null, barData);
-  const skillsData = skills.slice(0,6).map(function(s){return {name:s,count:Math.floor(Math.random()*50)+10};});
-  const maxSkill = skillsData.length ? Math.max.apply(null, skillsData.map(function(s){return s.count;})) : 1;
-  const activities = [
+  const posts=await postsR.json(), users=await usersR.json();
+  const myPosts=posts.filter(function(p){return p.user_id===ME.id;});
+  const totalLikes=myPosts.reduce(function(s,p){return s+JSON.parse(p.likes||'[]').length;},0);
+  const skills=JSON.parse(ME.skills||'[]');
+  const weeks=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const barData=weeks.map(function(){return Math.floor(Math.random()*90)+10;});
+  const maxBar=Math.max.apply(null,barData);
+  const skillsData=skills.slice(0,6).map(function(s){return {name:s,count:Math.floor(Math.random()*50)+10};});
+  const maxSkill=skillsData.length?Math.max.apply(null,skillsData.map(function(s){return s.count;})):1;
+  const activities=[
     {dot:'var(--sky)',text:'You posted an update',time:'2h ago'},
     {dot:'var(--mint)',text:'Someone liked your post',time:'4h ago'},
     {dot:'var(--violet)',text:'New connection request',time:'1d ago'},
     {dot:'var(--amber)',text:'Profile viewed 3 times',time:'2d ago'},
-    {dot:'var(--sky)',text:'Resume analyzed with AI',time:'3d ago'},
+    {dot:'var(--mint)',text:'Resume analyzed by TARA',time:'3d ago'},
   ];
-  document.getElementById('analyticsContent').innerHTML =
+  document.getElementById('analyticsContent').innerHTML=
     '<div class="section-header"><div class="section-title">Analytics Dashboard</div><div style="font-size:.78rem;color:var(--muted);font-weight:700">Last 30 days</div></div>' +
     '<div class="analytics-grid">' +
-      '<div class="metric-card"><div class="metric-val" style="color:var(--sky)">'+myPosts.length+'</div><div class="metric-label">Posts</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*4+1)+' this week</div></div>' +
-      '<div class="metric-card"><div class="metric-val" style="color:var(--mint)">'+totalLikes+'</div><div class="metric-label">Total Likes</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*8+2)+' new</div></div>' +
-      '<div class="metric-card"><div class="metric-val" style="color:var(--violet)">'+(users.length-1)+'</div><div class="metric-label">Network</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*3+1)+' this month</div></div>' +
-      '<div class="metric-card"><div class="metric-val" style="color:var(--amber)">'+skills.length+'</div><div class="metric-label">Skills</div><div class="metric-delta '+(skills.length>3?'up':'down')+'">'+(skills.length>3?'\u2191 Strong':'\u2191 Add more')+'</div></div>' +
+    '<div class="metric-card"><div class="metric-val" style="color:var(--sky)">'+myPosts.length+'</div><div class="metric-label">Posts</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*4+1)+' this week</div></div>' +
+    '<div class="metric-card"><div class="metric-val" style="color:var(--mint)">'+totalLikes+'</div><div class="metric-label">Total Likes</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*8+2)+' new</div></div>' +
+    '<div class="metric-card"><div class="metric-val" style="color:var(--violet)">'+(users.length-1)+'</div><div class="metric-label">Network</div><div class="metric-delta up">\u2191 '+Math.floor(Math.random()*3+1)+' this month</div></div>' +
+    '<div class="metric-card"><div class="metric-val" style="color:var(--amber)">'+skills.length+'</div><div class="metric-label">Skills</div><div class="metric-delta '+(skills.length>3?'up':'down')+'">'+(skills.length>3?'\u2191 Strong':'\u2191 Add more')+'</div></div>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">' +
-      '<div class="chart-card"><div class="chart-title">Activity this week</div>' +
-        '<div class="bar-chart">'+barData.map(function(v,i){return '<div class="bar-col"><div class="bar-fill" style="height:'+(v/maxBar*90)+'px"></div><div class="bar-label">'+weeks[i]+'</div></div>';}).join('')+'</div>' +
-      '</div>' +
-      '<div class="chart-card"><div class="chart-title">Recent activity</div>' +
-        '<ul class="activity-list">'+activities.map(function(a){return '<li class="activity-item"><div class="activity-dot" style="background:'+a.dot+'"></div><div class="activity-text">'+a.text+'</div><div class="activity-time">'+a.time+'</div></li>';}).join('')+'</ul>' +
-      '</div>' +
+    '<div class="chart-card"><div class="chart-title">Activity this week</div><div class="bar-chart">'+barData.map(function(v,i){return '<div class="bar-col"><div class="bar-fill" style="height:'+(v/maxBar*90)+'px"></div><div class="bar-label">'+weeks[i]+'</div></div>';}).join('')+'</div></div>' +
+    '<div class="chart-card"><div class="chart-title">Recent activity</div><ul class="activity-list">'+activities.map(function(a){return '<li class="activity-item"><div class="activity-dot" style="background:'+a.dot+'"></div><div class="activity-text">'+a.text+'</div><div class="activity-time">'+a.time+'</div></li>';}).join('')+'</ul></div>' +
     '</div>' +
-    (skillsData.length ? '<div class="chart-card"><div class="chart-title">Skills profile</div><div class="skills-bar-list">'+skillsData.map(function(s){return '<div class="skill-bar-item"><div class="skill-bar-header"><span class="skill-name">'+s.name+'</span><span class="skill-cnt">'+s.count+' posts</span></div><div class="skill-bar-track"><div class="skill-bar-fill" style="width:'+(s.count/maxSkill*100)+'%"></div></div></div>';}).join('')+'</div></div>' : '');
+    (skillsData.length?'<div class="chart-card"><div class="chart-title">Skills profile</div><div class="skills-bar-list">'+skillsData.map(function(s){return '<div class="skill-bar-item"><div class="skill-bar-header"><span class="skill-name">'+s.name+'</span><span class="skill-cnt">'+s.count+' posts</span></div><div class="skill-bar-track"><div class="skill-bar-fill" style="width:'+(s.count/maxSkill*100)+'%"></div></div></div>';}).join('')+'</div></div>':'');
 }
 
-// JOBS
-var currentJobFilter = 'all';
-
-async function loadAppliedJobs() {
-  const r = await fetch('/api/jobs/applied');
-  const applied = await r.json();
-  appliedJobs = new Set(applied.map(function(a){return String(a.job_id);}));
-}
-
-async function loadCompanyJobs() {
-  const r = await fetch('/api/jobs/company_posted');
-  allCompanyJobs = await r.json();
-}
-
-async function loadJobs() {
-  await Promise.all([loadAppliedJobs(), loadCompanyJobs()]);
-  renderJobs(currentJobFilter);
-  var cnt = appliedJobs.size;
-  document.getElementById('appliedCount').textContent = cnt ? cnt+' applied' : '';
-}
-
-function filterJobs(filter, btn) {
-  currentJobFilter = filter;
-  document.querySelectorAll('.jf-btn').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active');
-  renderJobs(filter);
-}
-
-function renderJobs(filter) {
-  var jobs = allCompanyJobs.map(function(j){return {
-    id: String(j.id), title: j.title, company: j.company,
-    location: j.location, type: j.type, salary: j.salary,
-    description: j.description, skills: JSON.parse(j.skills||'[]'),
-    isCompanyPosted: true, posted_by: j.company_user_id,
-  };});
-  if (filter !== 'all') {
-    jobs = jobs.filter(function(j){return (j.location||'').includes(filter)||(j.type||'').includes(filter);});
-  }
-  var container = document.getElementById('jobsList');
-  if (!jobs.length) {
-    container.innerHTML = '<div class="empty-state"><span class="icon">&#128188;</span><h3>No jobs posted yet</h3><p>'+(isCompany()?'Click <strong>+ Post a Job</strong> above to add your first opening.':'Check back soon \u2014 companies will post openings here.')+'</p></div>';
-    return;
-  }
-  container.innerHTML = jobs.map(function(j){
-    var applied = appliedJobs.has(j.id);
-    var isOwn = isCompany() && j.posted_by === ME.id;
+var currentJobFilter='all';
+async function loadAppliedJobs(){const r=await fetch('/api/jobs/applied');const applied=await r.json();appliedJobs=new Set(applied.map(function(a){return String(a.job_id);}));}
+async function loadCompanyJobs(){const r=await fetch('/api/jobs/company_posted');allCompanyJobs=await r.json();}
+async function loadJobs(){await Promise.all([loadAppliedJobs(),loadCompanyJobs()]);renderJobs(currentJobFilter);var cnt=appliedJobs.size;document.getElementById('appliedCount').textContent=cnt?cnt+' applied':'';}
+function filterJobs(filter,btn){currentJobFilter=filter;document.querySelectorAll('.jf-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');renderJobs(filter);}
+function renderJobs(filter){
+  var jobs=allCompanyJobs.map(function(j){return {id:String(j.id),title:j.title,company:j.company,location:j.location,type:j.type,salary:j.salary,description:j.description,skills:JSON.parse(j.skills||'[]'),isCompanyPosted:true,posted_by:j.company_user_id};});
+  if(filter!=='all'){jobs=jobs.filter(function(j){return (j.location||'').includes(filter)||(j.type||'').includes(filter);});}
+  var container=document.getElementById('jobsList');
+  if(!jobs.length){container.innerHTML='<div class="empty-state"><span class="icon">&#128188;</span><h3>No jobs posted yet</h3><p>'+(isCompany()?'Click <strong>+ Post a Job</strong> to add your first opening.':'Check back soon \u2014 companies will post openings here.')+'</p></div>';return;}
+  container.innerHTML=jobs.map(function(j){
+    var applied=appliedJobs.has(j.id);
+    var isOwn=isCompany()&&j.posted_by===ME.id;
     return '<div class="job-board-card company-posted">' +
       '<div class="jb-header"><div><div class="jb-title">'+j.title+'</div><div class="jb-company">'+j.company+'</div></div>' +
-      (isOwn ? '<button onclick="deleteCompanyJob(\''+j.id+'\',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>' : '') +
-      '</div>' +
+      (isOwn?'<button onclick="deleteCompanyJob(\''+j.id+'\',this)" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(244,63,94,.3);background:transparent;color:var(--rose);font-size:.73rem;font-weight:800;cursor:pointer">Remove</button>':'')+'</div>' +
       '<div class="jb-meta"><span class="jb-badge jb-location">&#128205; '+j.location+'</span><span class="jb-badge jb-type">'+j.type+'</span>'+(j.salary?'<span class="jb-badge jb-salary">&#128176; '+j.salary+'</span>':'')+'</div>' +
       '<div class="jb-desc">'+j.description+'</div>' +
       '<div class="jb-skills">'+(j.skills||[]).map(function(s){return '<span class="jb-skill">'+s+'</span>';}).join('')+'</div>' +
-      '<div class="jb-footer">'+(isOwn?'<div class="applied-tag" style="color:var(--amber)">&#128203; Your posting</div>':applied?'<div class="applied-tag">\u2713 Applied</div>':'<button class="apply-btn" onclick="applyJob(\''+j.id+'\',\''+escAttr(j.title)+'\',\''+escAttr(j.company)+'\',this)">Apply now &rarr;</button>')+'</div>' +
-    '</div>';
+      '<div class="jb-footer">'+(isOwn?'<div class="applied-tag" style="color:var(--amber)">&#128203; Your posting</div>':applied?'<div class="applied-tag">\u2713 Applied</div>':'<button class="apply-btn" onclick="applyJob(\''+j.id+'\',\''+escAttr(j.title)+'\',\''+escAttr(j.company)+'\',this)">Apply now &rarr;</button>')+'</div></div>';
   }).join('');
 }
-
-async function applyJob(jobId, title, company, btn) {
-  btn.disabled=true; btn.textContent='Applying...';
-  const r = await fetch('/api/jobs/apply', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:jobId,job_title:title,company:company})});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); btn.disabled=false; btn.textContent='Apply now \u2192'; return; }
-  appliedJobs.add(String(jobId));
-  showToast('Application submitted! \uD83C\uDF89');
-  document.getElementById('appliedCount').textContent = appliedJobs.size+' applied';
-  btn.parentElement.innerHTML = '<div class="applied-tag">\u2713 Applied</div>';
-}
-
-function openPostJobModal() {
-  if (!isCompany()) { showToast('Only company accounts can post jobs', true); return; }
-  document.getElementById('pj_company').value = ME.name || '';
-  openModal('postJobModal');
-}
-
-async function submitJobPosting() {
-  var title = document.getElementById('pj_title').value.trim();
-  var company = document.getElementById('pj_company').value.trim();
-  var location = document.getElementById('pj_location').value;
-  var type = document.getElementById('pj_type').value;
-  var salary = document.getElementById('pj_salary').value.trim();
-  var desc = document.getElementById('pj_desc').value.trim();
-  var skillsRaw = document.getElementById('pj_skills').value.trim();
-  if (!title || !company || !desc) { showToast('Please fill title, company & description', true); return; }
-  var skills = skillsRaw.split(',').map(function(s){return s.trim();}).filter(Boolean);
-  const r = await fetch('/api/jobs/post', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({title:title,company:company,location:location,type:type,salary:salary,description:desc,skills:JSON.stringify(skills)})
-  });
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Job posted successfully! \uD83C\uDF89');
-  closeModal('postJobModal');
+async function applyJob(jobId,title,company,btn){btn.disabled=true;btn.textContent='Applying...';const r=await fetch('/api/jobs/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:jobId,job_title:title,company:company})});const d=await r.json();if(d.error){showToast('Error: '+d.error,true);btn.disabled=false;btn.textContent='Apply now \u2192';return;}appliedJobs.add(String(jobId));showToast('Application submitted!');document.getElementById('appliedCount').textContent=appliedJobs.size+' applied';btn.parentElement.innerHTML='<div class="applied-tag">\u2713 Applied</div>';}
+function openPostJobModal(){if(!isCompany()){showToast('Only company accounts can post jobs',true);return;}document.getElementById('pj_company').value=ME.name||'';openModal('postJobModal');}
+async function submitJobPosting(){
+  var title=document.getElementById('pj_title').value.trim();
+  var company=document.getElementById('pj_company').value.trim();
+  var location=document.getElementById('pj_location').value;
+  var type=document.getElementById('pj_type').value;
+  var salary=document.getElementById('pj_salary').value.trim();
+  var desc=document.getElementById('pj_desc').value.trim();
+  var skillsRaw=document.getElementById('pj_skills').value.trim();
+  if(!title||!company||!desc){showToast('Please fill title, company & description',true);return;}
+  var skills=skillsRaw.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  const r=await fetch('/api/jobs/post',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,company,location,type,salary,description:desc,skills:JSON.stringify(skills)})});
+  const d=await r.json();
+  if(d.error){showToast('Error: '+d.error,true);return;}
+  showToast('Job posted!');closeModal('postJobModal');
   ['pj_title','pj_salary','pj_desc','pj_skills'].forEach(function(id){document.getElementById(id).value='';});
   await loadJobs();
 }
+async function deleteCompanyJob(jobId,btn){if(!confirm('Remove this job posting?'))return;const r=await fetch('/api/jobs/'+jobId,{method:'DELETE'});const d=await r.json();if(d.error){showToast('Error: '+d.error,true);return;}showToast('Job removed');await loadJobs();}
 
-async function deleteCompanyJob(jobId, btn) {
-  if (!confirm('Remove this job posting?')) return;
-  const r = await fetch('/api/jobs/'+jobId, {method:'DELETE'});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  showToast('Job removed'); await loadJobs();
-}
-
-// NOTIFICATIONS
-async function loadNotifBadge() {
-  const r = await fetch('/api/notifications');
-  const notifs = await r.json();
-  var unread = notifs.filter(function(n){return !n.read;}).length;
-  document.getElementById('notifBadge').style.display = unread > 0 ? 'block' : 'none';
-}
-async function loadNotifications() {
-  const r = await fetch('/api/notifications');
-  const notifs = await r.json();
+async function loadNotifBadge(){const r=await fetch('/api/notifications');const notifs=await r.json();var unread=notifs.filter(function(n){return !n.read;}).length;document.getElementById('notifBadge').style.display=unread>0?'block':'none';}
+async function loadNotifications(){
+  const r=await fetch('/api/notifications');const notifs=await r.json();
   document.getElementById('notifBadge').style.display='none';
-  var container = document.getElementById('notifList');
-  if (!notifs.length) { container.innerHTML='<div class="empty-state"><span class="icon">&#128276;</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>'; return; }
-  var typeIcon = {like:'\uD83D\uDC4D',comment:'\uD83D\uDCAC',connection:'\uD83E\uDD1D',job:'\uD83D\uDCBC',default:'\uD83D\uDD14'};
-  var typeClass = {like:'like',comment:'comment',connection:'connection',job:'job'};
-  container.innerHTML = notifs.map(function(n){return '' +
-    '<div class="notif-item '+(n.read?'':'unread')+'">' +
-      '<div class="notif-icon '+(typeClass[n.type]||'like')+'">'+(typeIcon[n.type]||typeIcon.default)+'</div>' +
-      '<div class="notif-body"><div class="notif-msg">'+n.message+'</div><div class="notif-time">'+timeAgo(n.created_at)+'</div></div>' +
-      (!n.read?'<div class="unread-dot"></div>':'') +
-    '</div>';}).join('');
+  var container=document.getElementById('notifList');
+  if(!notifs.length){container.innerHTML='<div class="empty-state"><span class="icon">&#128276;</span><h3>No notifications</h3><p>You\'re all caught up!</p></div>';return;}
+  var typeIcon={like:'\uD83D\uDC4D',comment:'\uD83D\uDCAC',connection:'\uD83E\uDD1D',job:'\uD83D\uDCBC',default:'\uD83D\uDD14'};
+  var typeClass={like:'like',comment:'comment',connection:'connection',job:'job'};
+  container.innerHTML=notifs.map(function(n){return '<div class="notif-item '+(n.read?'':'unread')+'"><div class="notif-icon '+(typeClass[n.type]||'like')+'">'+(typeIcon[n.type]||typeIcon.default)+'</div><div class="notif-body"><div class="notif-msg">'+n.message+'</div><div class="notif-time">'+timeAgo(n.created_at)+'</div></div>'+(n.read?'':'<div class="unread-dot"></div>')+'</div>';}).join('');
 }
-async function markAllRead() {
-  await fetch('/api/notifications/read', {method:'POST'});
-  loadNotifications();
-}
+async function markAllRead(){await fetch('/api/notifications/read',{method:'POST'});loadNotifications();}
 
-// MESSAGES
-async function loadMsgBadge() {
-  const r = await fetch('/api/messages/unread_count');
-  const d = await r.json();
-  document.getElementById('msgBadge').style.display = d.count>0?'block':'none';
-}
-async function loadDMConvos() {
+async function loadMsgBadge(){const r=await fetch('/api/messages/unread_count');const d=await r.json();document.getElementById('msgBadge').style.display=d.count>0?'block':'none';}
+async function loadDMConvos(){
   await loadUsers();
-  const r = await fetch('/api/messages/convos');
-  const convos = await r.json();
-  var container = document.getElementById('dmConvoList');
-  var others = allUsers.filter(function(u){return u.id!==ME.id;});
-  if (!others.length) { container.innerHTML='<div style="padding:14px;color:var(--muted);font-size:.82rem;font-weight:600">No users yet</div>'; return; }
-  container.innerHTML = others.map(function(u) {
-    var convo = convos.find(function(c){return c.other_user_id===u.id;});
-    var ini = u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  const r=await fetch('/api/messages/convos');const convos=await r.json();
+  var container=document.getElementById('dmConvoList');
+  var others=allUsers.filter(function(u){return u.id!==ME.id;});
+  if(!others.length){container.innerHTML='<div style="padding:14px;color:var(--muted);font-size:.82rem;font-weight:600">No users yet</div>';return;}
+  container.innerHTML=others.map(function(u){
+    var convo=convos.find(function(c){return c.other_user_id===u.id;});
+    var ini=u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
     return '<div class="dm-convo-item '+(currentDMUser&&currentDMUser.id===u.id?'active':'')+'" onclick="openDMChat('+JSON.stringify(u).replace(/"/g,'&quot;')+')">' +
       '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
       '<div class="dm-convo-info"><div class="dm-convo-name">'+u.name+'</div><div class="dm-convo-preview">'+(convo?convo.last_message:'Start a conversation...')+'</div></div>' +
-      (convo?'<div class="dm-convo-time">'+timeAgo(convo.last_time)+'</div>':'') +
-    '</div>';
+      (convo?'<div class="dm-convo-time">'+timeAgo(convo.last_time)+'</div>':'')+'</div>';
   }).join('');
 }
-async function openDMChat(user) {
-  currentDMUser = user;
-  var ini = user.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
-  document.getElementById('dmChatArea').innerHTML =
-    '<div class="dm-chat">' +
-      '<div class="dm-chat-header">' +
-        '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
-        '<div><div class="dm-chat-name">'+user.name+'</div><div class="dm-chat-status">\u25CF Active</div></div>' +
-        '<button onclick="showPage(\'ai\')" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer">&#10022; AI help</button>' +
-      '</div>' +
-      '<div class="dm-messages" id="dmMessages"></div>' +
-      '<div class="dm-input-area">' +
-        '<input class="dm-input" type="text" id="dmInput" placeholder="Write a message..." onkeydown="if(event.key===\'Enter\')sendDM()"/>' +
-        '<button class="dm-send-btn" onclick="sendDM()">Send</button>' +
-      '</div>' +
-    '</div>';
+async function openDMChat(user){
+  currentDMUser=user;
+  var ini=user.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  document.getElementById('dmChatArea').innerHTML=
+    '<div class="dm-chat"><div class="dm-chat-header">' +
+    '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
+    '<div><div class="dm-chat-name">'+user.name+'</div><div class="dm-chat-status">\u25CF Active</div></div>' +
+    '<button onclick="showPage(\'ai\')" style="margin-left:auto;padding:6px 13px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:.74rem;font-weight:700;cursor:pointer">&#10022; Ask TARA</button>' +
+    '</div><div class="dm-messages" id="dmMessages"></div>' +
+    '<div class="dm-input-area"><input class="dm-input" type="text" id="dmInput" placeholder="Write a message..." onkeydown="if(event.key===\'Enter\')sendDM()"/>' +
+    '<button class="dm-send-btn" onclick="sendDM()">Send</button></div></div>';
   loadDMMessages(user.id);
 }
-async function loadDMMessages(userId) {
-  const r = await fetch('/api/messages/'+userId);
-  const msgs = await r.json();
-  var container = document.getElementById('dmMessages');
-  if (!msgs.length) { container.innerHTML='<div style="color:var(--muted);font-size:.82rem;font-weight:600;text-align:center;margin-top:20px">No messages yet. Say hello!</div>'; return; }
-  container.innerHTML = msgs.map(function(m) {
-    var mine = m.from_user===ME.id;
-    var ini = mine ? ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)
-                   : currentDMUser.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
-    return '<div class="dm-msg '+(mine?'mine':'')+'">' +
-      '<div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+ini+'</div>' +
-      '<div><div class="dm-bubble">'+escHtml(m.content)+'</div><div class="dm-msg-time">'+timeAgo(m.created_at)+'</div></div>' +
-    '</div>';
+async function loadDMMessages(userId){
+  const r=await fetch('/api/messages/'+userId);const msgs=await r.json();
+  var container=document.getElementById('dmMessages');
+  if(!msgs.length){container.innerHTML='<div style="color:var(--muted);font-size:.82rem;font-weight:600;text-align:center;margin-top:20px">No messages yet. Say hello!</div>';return;}
+  container.innerHTML=msgs.map(function(m){
+    var mine=m.from_user===ME.id;
+    var ini=mine?ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2):currentDMUser.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+    return '<div class="dm-msg '+(mine?'mine':'')+'"><div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+ini+'</div><div><div class="dm-bubble">'+escHtml(m.content)+'</div><div class="dm-msg-time">'+timeAgo(m.created_at)+'</div></div></div>';
   }).join('');
-  container.scrollTop = container.scrollHeight;
+  container.scrollTop=container.scrollHeight;
 }
-async function sendDM() {
-  if (!currentDMUser) return;
-  var input = document.getElementById('dmInput');
-  var val = input.value.trim();
-  if (!val) return;
-  input.value = '';
-  const r = await fetch('/api/messages', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to_user:currentDMUser.id,content:val})});
-  const d = await r.json();
-  if (d.error) { showToast('Error: '+d.error, true); return; }
-  await loadDMMessages(currentDMUser.id);
-  loadDMConvos();
+async function sendDM(){
+  if(!currentDMUser)return;
+  var input=document.getElementById('dmInput');var val=input.value.trim();if(!val)return;
+  input.value='';
+  const r=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to_user:currentDMUser.id,content:val})});
+  const d=await r.json();if(d.error){showToast('Error: '+d.error,true);return;}
+  await loadDMMessages(currentDMUser.id);loadDMConvos();
 }
-function openNewDM() {
-  var others = allUsers.filter(function(u){return u.id!==ME.id;});
-  document.getElementById('dmUserList').innerHTML = others.map(function(u){
-    var ini = u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+function openNewDM(){
+  var others=allUsers.filter(function(u){return u.id!==ME.id;});
+  document.getElementById('dmUserList').innerHTML=others.map(function(u){
+    var ini=u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--ink3)\'" onmouseout="this.style.background=\'\'" onclick="closeModal(\'newDMModal\');openDMChat('+JSON.stringify(u).replace(/"/g,'&quot;')+')">' +
       '<div class="avatar" style="width:36px;height:36px;font-size:.78rem">'+ini+'</div>' +
-      '<div><div style="font-size:.84rem;font-weight:800">'+u.name+'</div><div style="font-size:.74rem;color:var(--muted)">'+(u.headline||'gathR member')+'</div></div>' +
-    '</div>';
-  }).join('') || '<div style="color:var(--muted);font-size:.83rem;padding:10px">No other users yet</div>';
+      '<div><div style="font-size:.84rem;font-weight:800">'+u.name+'</div><div style="font-size:.74rem;color:var(--muted)">'+(u.headline||'gathR member')+'</div></div></div>';
+  }).join('')||'<div style="color:var(--muted);font-size:.83rem;padding:10px">No other users yet</div>';
   openModal('newDMModal');
 }
 
-// AI CHAT
-async function loadAIChatHistory() {
+// TARA AI CHAT
+async function loadAIChatHistory(){
   try {
-    const r = await fetch('/api/ai/history');
-    if (!r.ok) return;
-    const msgs = await r.json();
-    if (!msgs.length) return;
-    var container = document.getElementById('aiMessages');
-    container.innerHTML = '';
-    msgs.forEach(function(m){ appendAIMsg(m.role, m.content); });
-    aiChatHistory = msgs.map(function(m){return {role:m.role,content:m.content};});
-  } catch(e) {}
+    const r=await fetch('/api/ai/history');if(!r.ok)return;
+    const msgs=await r.json();if(!msgs.length)return;
+    var container=document.getElementById('aiMessages');container.innerHTML='';
+    msgs.forEach(function(m){appendAIMsg(m.role,m.content);});
+    aiChatHistory=msgs.map(function(m){return {role:m.role,content:m.content};});
+  } catch(e){}
 }
 
-async function sendAIMessage() {
-  var input = document.getElementById('aiInput');
-  var msg = input.value.trim();
-  if (!msg) return;
+async function sendAIMessage(){
+  var input=document.getElementById('aiInput');var msg=input.value.trim();if(!msg)return;
   input.value='';
   document.getElementById('aiSuggestions').style.display='none';
-  appendAIMsg('user', msg);
-  var btn = document.getElementById('aiSendBtn');
-  btn.disabled=true;
+  appendAIMsg('user',msg);
+  var btn=document.getElementById('aiSendBtn');btn.disabled=true;
   appendTyping();
-  aiChatHistory.push({role:'user', content:msg});
+  aiChatHistory.push({role:'user',content:msg});
   try {
-    const r = await fetch('/api/ai/chat', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        messages: aiChatHistory,
-        user: {name:ME.name, headline:ME.headline, skills:ME.skills, about:ME.about}
-      })
-    });
-    const d = await r.json();
-    removeTyping();
-    if (d.error) {
-      aiChatHistory.pop();
-      appendAIMsg('assistant', '\u26A0\uFE0F ' + d.error, true);
-    } else {
-      appendAIMsg('assistant', d.reply);
-      aiChatHistory.push({role:'assistant', content:d.reply});
-    }
-  } catch(e) {
-    removeTyping();
-    aiChatHistory.pop();
-    appendAIMsg('assistant', '\u26A0\uFE0F Network error \u2014 please check your connection and try again.', true);
-  }
+    const r=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:aiChatHistory,user:{name:ME.name,headline:ME.headline,skills:ME.skills,about:ME.about}})});
+    const d=await r.json();removeTyping();
+    if(d.error){aiChatHistory.pop();appendAIMsg('assistant','\u26A0\uFE0F '+d.error,true);}
+    else{appendAIMsg('assistant',d.reply);aiChatHistory.push({role:'assistant',content:d.reply});}
+  } catch(e){removeTyping();aiChatHistory.pop();appendAIMsg('assistant','\u26A0\uFE0F Network error \u2014 please check your connection.',true);}
   btn.disabled=false;
 }
 
-function sendAISuggestion(btn) {
-  document.getElementById('aiInput').value = btn.textContent;
-  sendAIMessage();
-}
+function sendAISuggestion(btn){document.getElementById('aiInput').value=btn.textContent;sendAIMessage();}
 
-function renderMarkdown(text) {
-  var s = text
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;');
-  // Code blocks
-  s = s.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:monospace;font-size:.78rem;overflow-x:auto;margin:8px 0;white-space:pre-wrap">$1</pre>');
-  // Inline code
-  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:.82em">$1</code>');
-  // Bold
-  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Headers
-  s = s.replace(/^### (.+)$/gm, '<div style="font-size:.9rem;font-weight:900;color:var(--text);margin:12px 0 5px;letter-spacing:-.02em">$1</div>');
-  s = s.replace(/^## (.+)$/gm, '<div style="font-size:.95rem;font-weight:900;color:var(--text);margin:14px 0 6px;letter-spacing:-.02em">$1</div>');
-  s = s.replace(/^# (.+)$/gm, '<div style="font-size:1rem;font-weight:900;color:var(--sky);margin:14px 0 6px;letter-spacing:-.03em">$1</div>');
-  // Bullet lists
-  s = s.replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;margin-top:2px">&#8226;</span><span>$1</span></div>');
-  // Numbered lists
-  s = s.replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--sky);flex-shrink:0;font-family:monospace;font-size:.82em;margin-top:2px">$1.</span><span>$2</span></div>');
-  // Horizontal rule
-  s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--line);margin:10px 0">');
-  // Line breaks
-  s = s.replace(/\n\n/g, '<div style="height:8px"></div>');
-  s = s.replace(/\n/g, '<br>');
+function renderMarkdown(text){
+  var s=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s=s.replace(/```([\s\S]*?)```/g,'<pre style="background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:monospace;font-size:.78rem;overflow-x:auto;margin:8px 0;white-space:pre-wrap">$1</pre>');
+  s=s.replace(/`([^`]+)`/g,'<code style="background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:.82em">$1</code>');
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  s=s.replace(/^### (.+)$/gm,'<div style="font-size:.9rem;font-weight:900;color:var(--text);margin:12px 0 5px;letter-spacing:-.02em">$1</div>');
+  s=s.replace(/^## (.+)$/gm,'<div style="font-size:.95rem;font-weight:900;color:var(--text);margin:14px 0 6px;letter-spacing:-.02em">$1</div>');
+  s=s.replace(/^# (.+)$/gm,'<div style="font-size:1rem;font-weight:900;color:var(--mint);margin:14px 0 6px;letter-spacing:-.03em">$1</div>');
+  s=s.replace(/^[\-\*] (.+)$/gm,'<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--mint);flex-shrink:0;margin-top:2px">&#8226;</span><span>$1</span></div>');
+  s=s.replace(/^(\d+)\. (.+)$/gm,'<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:var(--mint);flex-shrink:0;font-family:monospace;font-size:.82em;margin-top:2px">$1.</span><span>$2</span></div>');
+  s=s.replace(/^---+$/gm,'<hr style="border:none;border-top:1px solid var(--line);margin:10px 0">');
+  s=s.replace(/\n\n/g,'<div style="height:8px"></div>');
+  s=s.replace(/\n/g,'<br>');
   return s;
 }
 
-function appendAIMsg(role, content, isError) {
-  var icon = role==='user' ? ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2) : '&#10022;';
-  var container = document.getElementById('aiMessages');
-  var el = document.createElement('div');
-  el.className = 'ai-msg ' + role;
-  var rendered = isError ? escHtml(content) : (role === 'assistant' ? renderMarkdown(content) : escHtml(content));
-  el.innerHTML = '<div class="ai-msg-icon">'+icon+'</div><div class="ai-bubble'+(isError?' error':'')+'">'+rendered+'</div>';
-  container.appendChild(el);
-  container.scrollTop = container.scrollHeight;
+function appendAIMsg(role,content,isError){
+  var icon=role==='user'?ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2):'&#10022;';
+  var container=document.getElementById('aiMessages');
+  var el=document.createElement('div');el.className='ai-msg '+role;
+  var rendered=isError?escHtml(content):(role==='assistant'?renderMarkdown(content):escHtml(content));
+  el.innerHTML='<div class="ai-msg-icon">'+icon+'</div><div class="ai-bubble'+(isError?' error':'')+'">'+rendered+'</div>';
+  container.appendChild(el);container.scrollTop=container.scrollHeight;
 }
-
-function appendTyping() {
-  var container = document.getElementById('aiMessages');
-  var el = document.createElement('div');
-  el.className='ai-msg assistant'; el.id='typing-indicator';
+function appendTyping(){
+  var container=document.getElementById('aiMessages');var el=document.createElement('div');
+  el.className='ai-msg assistant';el.id='typing-indicator';
   el.innerHTML='<div class="ai-msg-icon">&#10022;</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
-  container.appendChild(el);
-  container.scrollTop = container.scrollHeight;
+  container.appendChild(el);container.scrollTop=container.scrollHeight;
 }
-function removeTyping() {
-  var el = document.getElementById('typing-indicator');
-  if (el) el.remove();
+function removeTyping(){var el=document.getElementById('typing-indicator');if(el)el.remove();}
+async function clearAIChat(){
+  await fetch('/api/ai/clear',{method:'POST'});aiChatHistory=[];
+  document.getElementById('aiMessages').innerHTML='<div class="ai-msg assistant"><div class="ai-msg-icon">&#10022;</div><div class="ai-bubble">Chat cleared! \uD83D\uDC4B I\'m <strong>TARA</strong> \u2014 ask me about your <strong>resume</strong>, <strong>job search</strong>, <strong>interviews</strong>, <strong>salary</strong>, or <strong>skills</strong>.</div></div>';
+  document.getElementById('aiSuggestions').style.display='flex';
 }
-async function clearAIChat() {
-  await fetch('/api/ai/clear', {method:'POST'});
-  aiChatHistory = [];
-  document.getElementById('aiMessages').innerHTML = '<div class="ai-msg assistant"><div class="ai-msg-icon">&#10022;</div><div class="ai-bubble">Chat cleared! I\'m ready to help \u2014 ask me anything about your career, interviews, resume, or any topic.</div></div>';
-  document.getElementById('aiSuggestions').style.display = 'flex';
-}
-function aiKeydown(e) {
-  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
-}
+function aiKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAIMessage();}}
 
-// NETWORK
-async function loadSuggestions() {
-  var others = allUsers.filter(function(u){return u.id!==ME.id;}).slice(0,4);
-  document.getElementById('suggestions').innerHTML = others.length ?
-    others.map(function(u){
-      return '<div class="suggest-item">' +
-        '<div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div>' +
-        '<div class="suggest-info"><div class="suggest-name">'+u.name+'</div><div class="suggest-role">'+(u.headline||'gathR member')+'</div></div>' +
-        '<button class="s-connect-btn" onclick="sendDMFrom('+u.id+')">&#128172;</button>' +
-      '</div>';
-    }).join('') :
+async function loadSuggestions(){
+  var others=allUsers.filter(function(u){return u.id!==ME.id;}).slice(0,4);
+  document.getElementById('suggestions').innerHTML=others.length?
+    others.map(function(u){return '<div class="suggest-item"><div class="avatar" style="width:28px;height:28px;font-size:.65rem">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div><div class="suggest-info"><div class="suggest-name">'+u.name+'</div><div class="suggest-role">'+(u.headline||'gathR member')+'</div></div><button class="s-connect-btn" onclick="sendDMFrom('+u.id+')">&#128172;</button></div>';}).join(''):
     '<div style="padding:14px;color:var(--muted);font-size:.82rem;font-weight:600">No suggestions yet</div>';
 }
-async function loadNetwork() {
-  var others = allUsers.filter(function(u){return u.id!==ME.id;});
-  document.getElementById('networkList').innerHTML = others.length ?
-    '<div class="people-grid">'+others.map(function(u){
-      return '<div class="people-card">' +
-        '<div class="avatar '+(u.account_type==='company'?'company-av':'')+'">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div>' +
-        '<div class="people-name">'+u.name+'</div>' +
-        '<div class="people-role">'+(u.headline||'gathR member')+'</div>' +
-        '<button class="connect-btn" onclick="sendMessage('+u.id+')">&#128172; Message</button>' +
-      '</div>';
-    }).join('')+'</div>' :
+async function loadNetwork(){
+  var others=allUsers.filter(function(u){return u.id!==ME.id;});
+  document.getElementById('networkList').innerHTML=others.length?
+    '<div class="people-grid">'+others.map(function(u){return '<div class="people-card"><div class="avatar '+(u.account_type==='company'?'company-av':'')+'">'+u.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2)+'</div><div class="people-name">'+u.name+'</div><div class="people-role">'+(u.headline||'gathR member')+'</div><button class="connect-btn" onclick="sendMessage('+u.id+')">&#128172; Message</button></div>';}).join('')+'</div>':
     '<div class="empty-state"><span class="icon">&#8853;</span><h3>No members yet</h3><p>Invite your colleagues!</p></div>';
 }
-function sendMessage(userId) { showPage('messages'); setTimeout(function(){ var u=allUsers.find(function(u){return u.id===userId;}); if(u)openDMChat(u); },100); }
-function sendDMFrom(userId) { var u=allUsers.find(function(u){return u.id===userId;}); if(u){ showPage('messages'); setTimeout(function(){openDMChat(u);},100); } }
+function sendMessage(userId){showPage('messages');setTimeout(function(){var u=allUsers.find(function(u){return u.id===userId;});if(u)openDMChat(u);},100);}
+function sendDMFrom(userId){var u=allUsers.find(function(u){return u.id===userId;});if(u){showPage('messages');setTimeout(function(){openDMChat(u);},100);}}
 
-// PROFILE
-function previewAvatar(input) {
-  if (!input.files[0]) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    avatarBase64 = e.target.result;
-    var prev = document.getElementById('ep_avatarPreview');
-    prev.innerHTML = '<img src="'+avatarBase64+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
-    updateAllAvatars(avatarBase64);
-  };
+function previewAvatar(input){
+  if(!input.files[0])return;
+  var reader=new FileReader();
+  reader.onload=function(e){avatarBase64=e.target.result;var prev=document.getElementById('ep_avatarPreview');prev.innerHTML='<img src="'+avatarBase64+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';updateAllAvatars(avatarBase64);};
   reader.readAsDataURL(input.files[0]);
 }
-function updateAllAvatars(src) {
-  ['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(el) el.innerHTML='<img src="'+src+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
-  });
-}
-function openEditProfile() {
-  if (!ME) return;
-  avatarBase64 = ME.avatar||null;
-  document.getElementById('ep_name').value = ME.name||'';
-  document.getElementById('ep_headline').value = ME.headline||'';
-  document.getElementById('ep_location').value = ME.location||'';
-  document.getElementById('ep_about').value = ME.about||'';
-  document.getElementById('ep_skills').value = JSON.parse(ME.skills||'[]').join(', ');
-  var prev = document.getElementById('ep_avatarPreview');
-  var ini = ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
-  prev.innerHTML = ME.avatar ? '<img src="'+ME.avatar+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">' : ini;
+function updateAllAvatars(src){['navAvatar','sideAvatar','compAvatar','profAvatar'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML='<img src="'+src+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';});}
+function openEditProfile(){
+  if(!ME)return;avatarBase64=ME.avatar||null;
+  document.getElementById('ep_name').value=ME.name||'';document.getElementById('ep_headline').value=ME.headline||'';
+  document.getElementById('ep_location').value=ME.location||'';document.getElementById('ep_about').value=ME.about||'';
+  document.getElementById('ep_skills').value=JSON.parse(ME.skills||'[]').join(', ');
+  var prev=document.getElementById('ep_avatarPreview');
+  var ini=ME.name.split(' ').map(function(w){return w[0];}).join('').toUpperCase().slice(0,2);
+  prev.innerHTML=ME.avatar?'<img src="'+ME.avatar+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':ini;
   openModal('editProfileModal');
 }
-async function saveProfile() {
-  var skills = document.getElementById('ep_skills').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
-  var data = {
-    name:document.getElementById('ep_name').value.trim(),
-    headline:document.getElementById('ep_headline').value.trim(),
-    location:document.getElementById('ep_location').value.trim(),
-    about:document.getElementById('ep_about').value.trim(),
-    skills:JSON.stringify(skills),
-    avatar:avatarBase64||ME.avatar||'',
-  };
-  const r = await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  const d = await r.json();
-  if (d.error) { showToast('Error saving', true); return; }
-  ME = Object.assign({}, ME, data);
-  if (ME.avatar) updateAllAvatars(ME.avatar);
-  refreshUserUI(); closeModal('editProfileModal'); showToast('Profile updated! \u2713');
+async function saveProfile(){
+  var skills=document.getElementById('ep_skills').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var data={name:document.getElementById('ep_name').value.trim(),headline:document.getElementById('ep_headline').value.trim(),location:document.getElementById('ep_location').value.trim(),about:document.getElementById('ep_about').value.trim(),skills:JSON.stringify(skills),avatar:avatarBase64||ME.avatar||''};
+  const r=await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const d=await r.json();if(d.error){showToast('Error saving',true);return;}
+  ME=Object.assign({},ME,data);if(ME.avatar)updateAllAvatars(ME.avatar);
+  refreshUserUI();closeModal('editProfileModal');showToast('Profile updated!');
 }
 
-// RESUME
-var rdz = document.getElementById('resumeDropZone');
-if (rdz) {
+var rdz=document.getElementById('resumeDropZone');
+if(rdz){
   rdz.addEventListener('dragover',function(e){e.preventDefault();rdz.classList.add('drag');});
   rdz.addEventListener('dragleave',function(){rdz.classList.remove('drag');});
   rdz.addEventListener('drop',function(e){e.preventDefault();rdz.classList.remove('drag');var f=e.dataTransfer.files[0];if(f)processResume(f);});
 }
 function handleResumeUpload(input){if(input.files[0])processResume(input.files[0]);}
-async function processResume(file) {
+async function processResume(file){
   document.getElementById('resumeLoading').style.display='block';
   document.getElementById('analysisResult').classList.remove('show');
   var steps=['Extracting text...','Analyzing skills...','Scoring ATS...','Finding job matches...','Building roadmap...'];
-  var si=0;
-  var iv=setInterval(function(){document.getElementById('resumeLoadText').textContent=steps[si%steps.length];si++;},1200);
-  var fd=new FormData(); fd.append('resume',file);
-  try {
-    const r=await fetch('/api/analyze_resume',{method:'POST',body:fd});
-    const d=await r.json();
-    clearInterval(iv); document.getElementById('resumeLoading').style.display='none';
+  var si=0;var iv=setInterval(function(){document.getElementById('resumeLoadText').textContent=steps[si%steps.length];si++;},1200);
+  var fd=new FormData();fd.append('resume',file);
+  try{
+    const r=await fetch('/api/analyze_resume',{method:'POST',body:fd});const d=await r.json();
+    clearInterval(iv);document.getElementById('resumeLoading').style.display='none';
     if(d.error){showToast('Analysis failed: '+d.error,true);return;}
-    renderAnalysis(d);
-    if(d.skills){ME.skills=JSON.stringify(d.skills);refreshUserUI();}
-  } catch(e) { clearInterval(iv); document.getElementById('resumeLoading').style.display='none'; showToast('Something went wrong.',true); }
+    renderAnalysis(d);if(d.skills){ME.skills=JSON.stringify(d.skills);refreshUserUI();}
+  }catch(e){clearInterval(iv);document.getElementById('resumeLoading').style.display='none';showToast('Something went wrong.',true);}
 }
-function renderAnalysis(d) {
-  var ats=d.ats||{}; var gap=d.gap||{}; var jobs=d.jobs||[];
-  var html=
-    '<div class="ai-card"><h4>&#10022; AI Profile Summary</h4><p>'+(d.ai_summary||'Analysis complete.')+'</p></div>' +
+function renderAnalysis(d){
+  var ats=d.ats||{};var gap=d.gap||{};var jobs=d.jobs||[];
+  var html='<div class="ai-card"><h4>&#10022; TARA\'s Profile Summary</h4><p>'+(d.ai_summary||'Analysis complete.')+'</p></div>' +
     '<div class="score-grid">' +
-      '<div class="score-box"><div class="val" style="color:var(--sky)">'+(d.profile_score||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Profile</div></div>' +
-      '<div class="score-box"><div class="val" style="color:#a78bfa">'+(ats.overall||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">ATS</div></div>' +
-      '<div class="score-box"><div class="val" style="color:var(--mint)">'+(ats.keywords||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Keywords</div></div>' +
-      '<div class="score-box"><div class="val" style="color:var(--amber)">'+(ats.readability||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Readability</div></div>' +
-    '</div>';
+    '<div class="score-box"><div class="val" style="color:var(--sky)">'+(d.profile_score||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Profile</div></div>' +
+    '<div class="score-box"><div class="val" style="color:#a78bfa">'+(ats.overall||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">ATS</div></div>' +
+    '<div class="score-box"><div class="val" style="color:var(--mint)">'+(ats.keywords||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Keywords</div></div>' +
+    '<div class="score-box"><div class="val" style="color:var(--amber)">'+(ats.readability||0)+'<span style="font-size:.7em">%</span></div><div class="lbl">Readability</div></div></div>';
   if(d.skills&&d.skills.length){html+='<div style="margin-bottom:14px"><div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:7px">Detected Skills</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+d.skills.map(function(s){return '<span class="tag tag-blue">'+s+'</span>';}).join('')+'</div></div>';}
-  if(jobs.length){
-    html+='<div style="margin-bottom:14px"><div style="font-size:.88rem;font-weight:900;letter-spacing:-.03em;margin-bottom:9px">&#127919; Top Job Matches</div>';
-    jobs.slice(0,5).forEach(function(j){html+='<div class="job-card-r"><div class="job-info"><div class="job-title">'+j.title+'</div><div class="job-co">'+j.company+' \u00b7 '+j.type+'</div></div><div class="job-bar"><div class="job-fill" style="width:0" data-w="'+j.match_pct+'%"></div></div><div class="job-pct">'+j.match_pct+'%</div></div>';});
-    html+='</div>';
-  }
+  if(jobs.length){html+='<div style="margin-bottom:14px"><div style="font-size:.88rem;font-weight:900;letter-spacing:-.03em;margin-bottom:9px">&#127919; Top Job Matches</div>';jobs.slice(0,5).forEach(function(j){html+='<div class="job-card-r"><div class="job-info"><div class="job-title">'+j.title+'</div><div class="job-co">'+j.company+' \u00b7 '+j.type+'</div></div><div class="job-bar"><div class="job-fill" style="width:0" data-w="'+j.match_pct+'%"></div></div><div class="job-pct">'+j.match_pct+'%</div></div>';});html+='</div>';}
   if(gap.missing_skills&&gap.missing_skills.length){html+='<div class="ai-card warn"><h4>&#128200; Skills to Develop</h4><p style="margin-bottom:9px">'+(gap.overview||'')+'</p><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">'+gap.missing_skills.map(function(s){return '<span class="tag tag-purple">'+s+'</span>';}).join('')+'</div></div>';}
   if(ats.suggestions&&ats.suggestions.length){ats.suggestions.forEach(function(s){html+='<div class="ai-card warn"><h4>'+s.title+'</h4><p>'+s.detail+'</p></div>';});}
-  var result=document.getElementById('analysisResult');
-  result.innerHTML=html; result.classList.add('show');
+  var result=document.getElementById('analysisResult');result.innerHTML=html;result.classList.add('show');
   setTimeout(function(){document.querySelectorAll('.job-fill').forEach(function(b){b.style.width=b.dataset.w;});},150);
 }
-function loadSavedAnalysis() {
-  if(ME&&ME.resume_analysis&&ME.resume_analysis!=='{}'){
-    try{var d=JSON.parse(ME.resume_analysis);if(d&&d.ai_summary)renderAnalysis(d);}catch(e){}
-  }
-}
+function loadSavedAnalysis(){if(ME&&ME.resume_analysis&&ME.resume_analysis!=='{}'){try{var d=JSON.parse(ME.resume_analysis);if(d&&d.ai_summary)renderAnalysis(d);}catch(e){}}}
 
-// UTILS
 function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 document.querySelectorAll('.modal-bg').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)m.classList.remove('show');});});
 function setText(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
 function escAttr(s){return String(s).replace(/'/g,"\\'").replace(/\n/g,' ');}
-function timeAgo(ts){
-  var d=new Date(ts+'Z'),n=new Date(),diff=(n-d)/1000;
-  if(diff<60)return'Just now';
-  if(diff<3600)return Math.floor(diff/60)+'m ago';
-  if(diff<86400)return Math.floor(diff/3600)+'h ago';
-  return Math.floor(diff/86400)+'d ago';
-}
-function showToast(msg, isErr) {
-  var el=document.getElementById('toast');
-  el.textContent=msg; el.className='toast'+(isErr?' err':'');
-  el.classList.add('show');
-  setTimeout(function(){el.classList.remove('show');},2800);
-}
+function timeAgo(ts){var d=new Date(ts+'Z'),n=new Date(),diff=(n-d)/1000;if(diff<60)return'Just now';if(diff<3600)return Math.floor(diff/60)+'m ago';if(diff<86400)return Math.floor(diff/3600)+'h ago';return Math.floor(diff/86400)+'d ago';}
+function showToast(msg,isErr){var el=document.getElementById('toast');el.textContent=msg;el.className='toast'+(isErr?' err':'');el.classList.add('show');setTimeout(function(){el.classList.remove('show');},2800);}
 </script>
 </body>
 </html>"""
@@ -2020,7 +1718,6 @@ function showToast(msg, isErr) {
 def index():
     return HTML
 
-# AUTH
 @app.route("/api/register", methods=["POST"])
 def register():
     d = request.json
@@ -2068,7 +1765,6 @@ def me():
     if not u: return jsonify({"error": "Not authenticated"}), 401
     return jsonify(row_to_dict(u))
 
-# PROFILE
 @app.route("/api/profile", methods=["PUT"])
 @login_required
 def update_profile():
@@ -2081,7 +1777,6 @@ def update_profile():
     user = row_to_dict(db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone())
     return jsonify(user)
 
-# POSTS
 @app.route("/api/posts", methods=["GET"])
 @login_required
 def get_posts():
@@ -2163,7 +1858,6 @@ def like_post(post_id):
     db.commit()
     return jsonify({"ok": True})
 
-# COMMENTS
 @app.route("/api/posts/<int:post_id>/comments", methods=["GET"])
 @login_required
 def get_comments(post_id):
@@ -2188,7 +1882,6 @@ def add_comment(post_id):
         add_notification(post["user_id"], "comment", f"{user['name']} commented on your post")
     return jsonify({"ok": True})
 
-# USERS
 @app.route("/api/users")
 @login_required
 def get_users():
@@ -2196,7 +1889,6 @@ def get_users():
     rows = db.execute("SELECT id,name,email,headline,location,skills,account_type FROM users").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
-# NOTIFICATIONS
 @app.route("/api/notifications")
 @login_required
 def get_notifications():
@@ -2213,7 +1905,6 @@ def mark_notifications_read():
     db.commit()
     return jsonify({"ok": True})
 
-# MESSAGES
 @app.route("/api/messages", methods=["POST"])
 @login_required
 def send_message():
@@ -2251,13 +1942,11 @@ def get_convos():
         content as last_message, created_at as last_time
         FROM messages WHERE from_user=? OR to_user=?
         ORDER BY created_at DESC""", (uid, uid, uid)).fetchall()
-    seen = set()
-    convos = []
+    seen = set(); convos = []
     for r in rows:
         r = row_to_dict(r)
         if r["other_user_id"] not in seen:
-            seen.add(r["other_user_id"])
-            convos.append(r)
+            seen.add(r["other_user_id"]); convos.append(r)
     return jsonify(convos)
 
 @app.route("/api/messages/unread_count")
@@ -2268,7 +1957,6 @@ def unread_count():
                      (session["user_id"],)).fetchone()
     return jsonify({"count": row["cnt"]})
 
-# JOBS
 @app.route("/api/jobs/apply", methods=["POST"])
 @login_required
 def apply_job():
@@ -2324,9 +2012,7 @@ def post_job():
 @login_required
 def get_company_posted_jobs():
     db = get_db()
-    rows = db.execute(
-        "SELECT * FROM company_jobs WHERE active=1 ORDER BY created_at DESC"
-    ).fetchall()
+    rows = db.execute("SELECT * FROM company_jobs WHERE active=1 ORDER BY created_at DESC").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route("/api/jobs/<int:job_id>", methods=["DELETE"])
@@ -2341,15 +2027,17 @@ def delete_company_job(job_id):
     db.commit()
     return jsonify({"ok": True})
 
-# AI CHAT
+# ═══════════════════════════════════════════
+#  TARA AI CHAT ROUTES
+# ═══════════════════════════════════════════
 @app.route("/api/ai/chat", methods=["POST"])
 @login_required
 def ai_chat():
     d = request.json
-    messages = d.get("messages", [])  # full history from frontend
+    messages = d.get("messages", [])
     user_ctx = d.get("user", {})
 
-    system = """You are gathR AI — a sharp, knowledgeable career coach and professional network assistant built into the gathR platform.
+    system = """You are TARA — a sharp, knowledgeable AI career assistant built into gathR, a professional networking platform.
 
 User profile:
 - Name: {name}
@@ -2358,45 +2046,42 @@ User profile:
 - About: {about}
 
 Your capabilities:
-- Deep career advice personalised to the user's background
-- Resume writing, ATS optimisation, cover letters
-- Interview prep — behavioural, technical, case studies
+- Resume review, ATS optimisation, and rewriting
+- Job search strategy and application tips
+- Interview preparation — behavioural, technical, case studies
 - Salary negotiation tactics and scripts
-- Job search strategy and LinkedIn optimisation
-- Networking outreach messages and templates
-- Career change roadmaps and skill gap analysis
-- General questions on any topic
+- Skills gap analysis and learning roadmaps
+- Professional networking and outreach messages
+- LinkedIn profile optimisation
+- Career change planning and growth advice
 
 Behaviour rules:
 - Be direct, specific, and genuinely helpful
 - Use markdown formatting: **bold**, bullet lists, headers
 - Give real, actionable advice with concrete examples
-- Never say you cannot help with something you actually can
-- Keep responses focused but complete""".format(
+- Always relate advice to the user's profile when possible
+- Keep responses focused, professional, and concise
+- Never give therapy or mental health advice — redirect to career topics""".format(
         name=safe_str(user_ctx.get("name"), "Unknown"),
         headline=safe_str(user_ctx.get("headline"), "Professional"),
         skills=safe_str(user_ctx.get("skills"), "[]"),
         about=safe_str(user_ctx.get("about"), ""),
     )
 
-    # Use frontend message history directly — it's the source of truth
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
 
-    # Sanitise and trim to last 40 messages
     cleaned = []
     for msg in messages[-40:]:
         role = msg.get("role", "")
         content = safe_str(msg.get("content", "")).strip()
         if role not in ("user", "assistant") or not content:
             continue
-        # Merge consecutive same-role messages
         if cleaned and cleaned[-1]["role"] == role:
             cleaned[-1]["content"] += "\n" + content
         else:
             cleaned.append({"role": role, "content": content[:4000]})
 
-    # Must end with a user message
     if not cleaned or cleaned[-1]["role"] != "user":
         return jsonify({"error": "Conversation must end with a user message"}), 400
 
@@ -2408,8 +2093,6 @@ Behaviour rules:
             messages=cleaned
         )
         reply = msg.content[0].text
-
-        # Persist to DB for history reload across sessions
         db = get_db()
         last_user_msg = safe_str(messages[-1].get("content", ""))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
@@ -2419,18 +2102,18 @@ Behaviour rules:
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-# AI HISTORY         
+        last_msg = safe_str(messages[-1].get("content", "")) if messages else ""
+        fallback = rule_based_reply(last_msg)
+        return jsonify({"reply": fallback})
+
 @app.route("/api/ai/history")
 @login_required
 def get_ai_history():
     db = get_db()
-    rows = db.execute(
-        "SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
-        (session["user_id"],)
-    ).fetchall()
+    rows = db.execute("SELECT role, content FROM ai_chat WHERE user_id=? ORDER BY created_at ASC",
+                      (session["user_id"],)).fetchall()
     return jsonify([{"role": r["role"], "content": r["content"]} for r in rows])
-# AI CHAT
+
 @app.route("/api/ai/clear", methods=["POST"])
 @login_required
 def clear_ai_chat():
@@ -2439,7 +2122,6 @@ def clear_ai_chat():
     db.commit()
     return jsonify({"ok": True})
 
-# CONNECTIONS
 @app.route("/api/connect", methods=["POST"])
 @login_required
 def connect_user():
@@ -2455,7 +2137,6 @@ def connect_user():
         add_notification(to, "connection", f"{user['name']} wants to connect with you")
     return jsonify({"ok": True})
 
-# RESUME AI
 @app.route("/api/analyze_resume", methods=["POST"])
 @login_required
 def analyze_resume():
@@ -2525,7 +2206,6 @@ Return exactly this JSON structure:
     db.commit()
     return jsonify(result)
 
-# STATIC
 from flask import send_from_directory
 
 @app.route("/uploads/<path:filename>")
