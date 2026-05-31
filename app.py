@@ -2373,13 +2373,21 @@ def ai_chat():
     d = request.json
     messages = d.get("messages", [])
     user_ctx = d.get("user", {})
+
+    def safe_str(val, fallback=""):
+        """Encode to UTF-8 then back — strips anything that can't survive the round-trip."""
+        try:
+            return str(val or fallback).encode("utf-8", errors="ignore").decode("utf-8")
+        except Exception:
+            return fallback
+
     system = f"""You are gathR AI, a friendly professional career coach and networking assistant for the gathR professional network platform.
 
 User context:
-- Name: {user_ctx.get('name','Unknown')}
-- Headline: {user_ctx.get('headline','')}
-- Skills: {user_ctx.get('skills','[]')}
-- About: {user_ctx.get('about','')}
+- Name: {safe_str(user_ctx.get('name'), 'Unknown')}
+- Headline: {safe_str(user_ctx.get('headline'))}
+- Skills: {safe_str(user_ctx.get('skills'), '[]')}
+- About: {safe_str(user_ctx.get('about'))}
 
 You help with:
 - Career advice, job search strategies, and interview preparation
@@ -2393,11 +2401,13 @@ You help with:
 Be concise, actionable, and encouraging. Use the user's context to personalize advice.
 Keep responses under 200 words unless complex technical advice is needed."""
 
-    safe_messages = [{"role": m["role"], "content": str(m["content"])[:2000]}
-                     for m in messages[-10:]]
+    safe_messages = [
+        {"role": m["role"], "content": safe_str(m["content"])[:2000]}
+        for m in messages[-10:]
+    ]
     try:
         msg = ai_client.messages.create(
-            model="claude-sonnet-4-6",   # ← FIXED: updated model string
+            model="claude-sonnet-4-6",
             max_tokens=500,
             system=system,
             messages=safe_messages
@@ -2407,22 +2417,13 @@ Keep responses under 200 words unless complex technical advice is needed."""
         if messages:
             last = messages[-1]
             db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
-                       (session["user_id"], last["role"], str(last["content"])[:2000]))
+                       (session["user_id"], last["role"], safe_str(last["content"])[:2000]))
         db.execute("INSERT INTO ai_chat (user_id,role,content) VALUES (?,?,?)",
                    (session["user_id"], "assistant", reply[:2000]))
         db.commit()
         return jsonify({"reply": reply})
     except Exception as e:
-        # Surface the real error to the client so it's visible in the UI
         return jsonify({"error": str(e)}), 500
-
-@app.route("/api/ai/clear", methods=["POST"])
-@login_required
-def clear_ai_chat():
-    db = get_db()
-    db.execute("DELETE FROM ai_chat WHERE user_id=?", (session["user_id"],))
-    db.commit()
-    return jsonify({"ok": True})
 
 # ── CONNECTIONS ───────────────────────────
 @app.route("/api/connect", methods=["POST"])
